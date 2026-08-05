@@ -1,12 +1,14 @@
-locals {
-  name = "${var.project_name}-${var.environment}-ssm-bastion"
+module "labels" {
+  source  = "clouddrove/labels/aws"
+  version = "1.3.1"
 
-  common_tags = merge(var.tags, {
-    Project     = var.project_name
-    Environment = var.environment
-    ManagedBy   = "terraform"
-    Module      = "ssm-jumphost"
-  })
+  name        = var.name
+  environment = var.environment
+  label_order = var.label_order
+  attributes  = var.attributes
+  managedby   = var.managedby
+  repository  = var.repository
+  extra_tags  = var.extra_tags
 }
 
 ##############################################################################
@@ -28,7 +30,7 @@ locals {
 }
 
 resource "aws_launch_template" "this" {
-  name                   = local.name
+  name                   = module.labels.id
   update_default_version = true
 
   image_id      = local.ami_ssm_path
@@ -52,13 +54,13 @@ resource "aws_launch_template" "this" {
     for_each = toset(["instance", "volume", "network-interface"])
     content {
       resource_type = tag_specifications.value
-      tags          = merge(local.common_tags, { Name = local.name })
+      tags          = module.labels.tags
     }
   }
 
-  tags = local.common_tags
+  tags = module.labels.tags
 
-  # No key_name and no network_interfaces with a public IP — SSM-only access.
+  # No key_name and no network_interfaces with a public IP, SSM-only access.
 }
 
 ##############################################################################
@@ -69,7 +71,7 @@ resource "aws_launch_template" "this" {
 # match the pattern the tunnel script expects: "<project>-<env>-ssm-bastion".
 ##############################################################################
 resource "aws_autoscaling_group" "this" {
-  name = "${local.name}-asg"
+  name = "${module.labels.id}-asg"
 
   launch_template {
     id      = aws_launch_template.this.id
@@ -83,15 +85,10 @@ resource "aws_autoscaling_group" "this" {
   vpc_zone_identifier  = var.subnet_ids
   termination_policies = ["OldestInstance"]
 
-  # The Name tag is how the client tunnel script finds this instance.
-  tag {
-    key                 = "Name"
-    value               = local.name
-    propagate_at_launch = true
-  }
-
+  # The Name tag (set by module.labels) is how the client tunnel script finds
+  # this instance.
   dynamic "tag" {
-    for_each = local.common_tags
+    for_each = module.labels.tags
     content {
       key                 = tag.key
       value               = tag.value

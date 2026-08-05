@@ -6,11 +6,11 @@
 #           443 to everything (SSM endpoints / optional NAT path).
 ##############################################################################
 resource "aws_security_group" "this" {
-  name_prefix = "${local.name}-"
+  name_prefix = "${module.labels.id}-"
   description = "Jump host: no inbound, egress to VPC + HTTPS"
   vpc_id      = var.vpc_id
 
-  tags = merge(local.common_tags, { Name = "${local.name}-sg" })
+  tags = merge(module.labels.tags, { Name = "${module.labels.id}-sg" })
 
   lifecycle {
     create_before_destroy = true

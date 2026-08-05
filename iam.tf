@@ -18,15 +18,15 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "this" {
-  name               = "${local.name}-role"
+  name               = "${module.labels.id}-role"
   assume_role_policy = data.aws_iam_policy_document.trust.json
-  tags               = local.common_tags
+  tags               = module.labels.tags
 }
 
 resource "aws_iam_instance_profile" "this" {
-  name = "${local.name}-profile"
+  name = "${module.labels.id}-profile"
   role = aws_iam_role.this.name
-  tags = local.common_tags
+  tags = module.labels.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_core" {

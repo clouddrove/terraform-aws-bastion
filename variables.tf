@@ -1,11 +1,43 @@
-variable "project_name" {
+variable "name" {
   type        = string
-  description = "Project / product name. Used in resource names and tags."
+  description = "Name of the bastion, used as the first element of the generated resource name (for example \"bastion\")."
+  default     = "bastion"
 }
 
 variable "environment" {
   type        = string
-  description = "Environment name (e.g. dev, qa, prod)."
+  description = "Environment name (for example dev, qa, prod). Second element of the generated resource name."
+  default     = ""
+}
+
+variable "label_order" {
+  type        = list(any)
+  description = "Order of elements in the generated resource name."
+  default     = ["name", "environment"]
+}
+
+variable "attributes" {
+  type        = list(string)
+  description = "Additional name attributes, appended after label_order elements. Pass [\"ssm\"] to get names ending in -ssm."
+  default     = []
+}
+
+variable "managedby" {
+  type        = string
+  description = "ManagedBy tag value."
+  default     = "hello@clouddrove.com"
+}
+
+variable "repository" {
+  type        = string
+  description = "Repository tag value."
+  default     = "https://github.com/clouddrove/terraform-aws-bastion"
+}
+
+variable "extra_tags" {
+  type        = map(string)
+  description = "Additional tags applied to every resource."
+  default     = {}
 }
 
 variable "vpc_id" {
@@ -83,8 +115,3 @@ variable "asg_schedules" {
   default     = []
 }
 
-variable "tags" {
-  type        = map(string)
-  description = "Additional tags applied to every resource."
-  default     = {}
-}

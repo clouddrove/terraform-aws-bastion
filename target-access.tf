@@ -25,5 +25,5 @@ resource "aws_vpc_security_group_ingress_rule" "target" {
   ip_protocol                  = "tcp"
   description                  = each.value.description
 
-  tags = merge(local.common_tags, { Name = "${local.name}-to-${each.value.port}" })
+  tags = merge(module.labels.tags, { Name = "${module.labels.id}-to-${each.value.port}" })
 }

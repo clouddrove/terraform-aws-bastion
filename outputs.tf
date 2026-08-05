@@ -1,6 +1,11 @@
-output "bastion_name" {
-  description = "Name tag of the jump host. The client tunnel script discovers the instance by this exact value."
-  value       = local.name
+output "name" {
+  description = "Generated name of the bastion resources. The client discovers instances by the Name tag carrying this value."
+  value       = module.labels.id
+}
+
+output "tags" {
+  description = "Tag map applied to every resource."
+  value       = module.labels.tags
 }
 
 output "iam_role_arn" {
