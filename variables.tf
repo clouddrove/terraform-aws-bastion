@@ -1,3 +1,9 @@
+variable "enabled" {
+  type        = bool
+  description = "Set to false to prevent the module from creating any resources."
+  default     = true
+}
+
 variable "name" {
   type        = string
   description = "Name of the bastion, used as the first element of the generated resource name (for example \"bastion\")."

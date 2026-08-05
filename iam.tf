@@ -18,24 +18,30 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "this" {
+  count = var.enabled ? 1 : 0
+
   name               = "${module.labels.id}-role"
   assume_role_policy = data.aws_iam_policy_document.trust.json
   tags               = module.labels.tags
 }
 
 resource "aws_iam_instance_profile" "this" {
+  count = var.enabled ? 1 : 0
+
   name = "${module.labels.id}-profile"
-  role = aws_iam_role.this.name
+  role = aws_iam_role.this[0].name
   tags = module.labels.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_core" {
-  role       = aws_iam_role.this.name
+  count = var.enabled ? 1 : 0
+
+  role       = aws_iam_role.this[0].name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_role_policy_attachment" "extra" {
-  for_each   = toset(var.extra_iam_policy_arns)
-  role       = aws_iam_role.this.name
+  for_each   = var.enabled ? toset(var.extra_iam_policy_arns) : toset([])
+  role       = aws_iam_role.this[0].name
   policy_arn = each.value
 }

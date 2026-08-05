@@ -9,6 +9,7 @@ module "labels" {
   managedby   = var.managedby
   repository  = var.repository
   extra_tags  = var.extra_tags
+  enabled     = var.enabled
 }
 
 ##############################################################################
@@ -30,6 +31,8 @@ locals {
 }
 
 resource "aws_launch_template" "this" {
+  count = var.enabled ? 1 : 0
+
   name                   = module.labels.id
   update_default_version = true
 
@@ -37,10 +40,10 @@ resource "aws_launch_template" "this" {
   instance_type = var.instance_type
 
   iam_instance_profile {
-    name = aws_iam_instance_profile.this.name
+    name = aws_iam_instance_profile.this[0].name
   }
 
-  vpc_security_group_ids = [aws_security_group.this.id]
+  vpc_security_group_ids = [aws_security_group.this[0].id]
 
   user_data = var.user_data != "" ? base64encode(var.user_data) : null
 
@@ -71,10 +74,12 @@ resource "aws_launch_template" "this" {
 # match the pattern the tunnel script expects: "<project>-<env>-ssm-bastion".
 ##############################################################################
 resource "aws_autoscaling_group" "this" {
+  count = var.enabled ? 1 : 0
+
   name = "${module.labels.id}-asg"
 
   launch_template {
-    id      = aws_launch_template.this.id
+    id      = aws_launch_template.this[0].id
     version = "$Latest"
   }
 
@@ -105,7 +110,7 @@ resource "aws_autoscaling_group" "this" {
 resource "aws_autoscaling_schedule" "this" {
   for_each = var.schedule_enabled ? { for s in var.asg_schedules : s.name => s } : {}
 
-  autoscaling_group_name = aws_autoscaling_group.this.name
+  autoscaling_group_name = aws_autoscaling_group.this[0].name
   scheduled_action_name  = each.value.name
   min_size               = each.value.min_size
   max_size               = each.value.max_size

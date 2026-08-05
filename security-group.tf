@@ -6,6 +6,8 @@
 #           443 to everything (SSM endpoints / optional NAT path).
 ##############################################################################
 resource "aws_security_group" "this" {
+  count = var.enabled ? 1 : 0
+
   name_prefix = "${module.labels.id}-"
   description = "Jump host: no inbound, egress to VPC + HTTPS"
   vpc_id      = var.vpc_id
@@ -19,7 +21,9 @@ resource "aws_security_group" "this" {
 
 # Reach in-VPC resources (EKS apiserver, Aurora, RDS Proxy, Redis, internal ALB).
 resource "aws_vpc_security_group_egress_rule" "vpc" {
-  security_group_id = aws_security_group.this.id
+  count = var.enabled ? 1 : 0
+
+  security_group_id = aws_security_group.this[0].id
   description       = "All traffic to the VPC CIDR"
   cidr_ipv4         = var.vpc_cidr
   ip_protocol       = "-1"
@@ -27,7 +31,9 @@ resource "aws_vpc_security_group_egress_rule" "vpc" {
 
 # HTTPS out — SSM interface endpoints, and the AWS API path when NAT is enabled.
 resource "aws_vpc_security_group_egress_rule" "https" {
-  security_group_id = aws_security_group.this.id
+  count = var.enabled ? 1 : 0
+
+  security_group_id = aws_security_group.this[0].id
   description       = "HTTPS egress (SSM endpoints / AWS API)"
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 443
@@ -36,8 +42,8 @@ resource "aws_vpc_security_group_egress_rule" "https" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "extra" {
-  for_each          = toset(var.extra_egress_cidrs)
-  security_group_id = aws_security_group.this.id
+  for_each          = var.enabled ? toset(var.extra_egress_cidrs) : toset([])
+  security_group_id = aws_security_group.this[0].id
   description       = "Extra egress CIDR"
   cidr_ipv4         = each.value
   ip_protocol       = "-1"

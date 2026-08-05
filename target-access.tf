@@ -14,12 +14,12 @@
 #   ]
 ##############################################################################
 resource "aws_vpc_security_group_ingress_rule" "target" {
-  for_each = {
+  for_each = var.enabled ? {
     for r in var.target_ingress_rules : "${r.security_group_id}:${r.port}" => r
-  }
+  } : {}
 
   security_group_id            = each.value.security_group_id
-  referenced_security_group_id = aws_security_group.this.id
+  referenced_security_group_id = aws_security_group.this[0].id
   from_port                    = each.value.port
   to_port                      = each.value.port
   ip_protocol                  = "tcp"
