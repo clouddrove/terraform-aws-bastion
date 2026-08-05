@@ -43,14 +43,32 @@ resource "aws_launch_template" "this" {
     name = aws_iam_instance_profile.this[0].name
   }
 
-  vpc_security_group_ids = [aws_security_group.this[0].id]
-
   user_data = var.user_data != "" ? base64encode(var.user_data) : null
 
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
+  }
+
+  # Explicit, so the bastion never receives a public IP even if a consumer
+  # passes a subnet with map_public_ip_on_launch enabled.
+  network_interfaces {
+    associate_public_ip_address = false
+    delete_on_termination       = true
+    security_groups             = [aws_security_group.this[0].id]
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_type           = "gp3"
+      volume_size           = var.root_volume_size
+      encrypted             = true
+      kms_key_id            = var.kms_key_id
+      delete_on_termination = true
+    }
   }
 
   dynamic "tag_specifications" {
@@ -70,8 +88,8 @@ resource "aws_launch_template" "this" {
 # Auto Scaling Group.
 #
 # desired_capacity = 1 keeps exactly one jump host alive and self-heals if the
-# instance is terminated. The client discovers it by the Name tag, which MUST
-# match the pattern the tunnel script expects: "<project>-<env>-ssm-bastion".
+# instance is terminated. The client discovers it by the Name tag, which
+# module.labels sets to module.labels.id.
 ##############################################################################
 resource "aws_autoscaling_group" "this" {
   count = var.enabled ? 1 : 0
@@ -89,6 +107,18 @@ resource "aws_autoscaling_group" "this" {
 
   vpc_zone_identifier  = var.subnet_ids
   termination_policies = ["OldestInstance"]
+
+  max_instance_lifetime = var.max_instance_lifetime
+
+  dynamic "instance_refresh" {
+    for_each = var.instance_refresh_enabled ? [1] : []
+    content {
+      strategy = "Rolling"
+      preferences {
+        min_healthy_percentage = 0
+      }
+    }
+  }
 
   # The Name tag (set by module.labels) is how the client tunnel script finds
   # this instance.

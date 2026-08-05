@@ -121,3 +121,39 @@ variable "asg_schedules" {
   default     = []
 }
 
+variable "kms_key_id" {
+  type        = string
+  description = <<-EOT
+    ARN of a customer-managed KMS key for the root volume. Leave null to use the
+    AWS-managed aws/ebs key, which is free and adequate here: the volume holds
+    only the Amazon Linux 2023 base image and the SSM agent, with no data and no
+    credentials. Set this only when a compliance requirement mandates a
+    customer-managed key, or when snapshots are shared across accounts.
+  EOT
+  default     = null
+}
+
+variable "root_volume_size" {
+  type        = number
+  description = "Root volume size in GiB."
+  default     = 8
+}
+
+variable "max_instance_lifetime" {
+  type        = number
+  description = <<-EOT
+    Maximum instance lifetime in seconds, after which the ASG replaces the
+    instance. A bastion in a private subnet with no NAT cannot reach package
+    repositories, so patching means replacing the instance from a newer AMI
+    rather than updating in place. Minimum accepted by AWS is 86400 (one day).
+    Default is 30 days. Set to null to disable.
+  EOT
+  default     = 2592000
+}
+
+variable "instance_refresh_enabled" {
+  type        = bool
+  description = "Roll instances automatically when the launch template changes."
+  default     = true
+}
+
