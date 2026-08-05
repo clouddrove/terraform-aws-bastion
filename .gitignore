@@ -19,3 +19,9 @@ client/tunnel.local.json
 # OS / editor
 .DS_Store
 *.swp
+
+# Internal working artifacts, not part of the module
+.superpowers/
+docs/superpowers/
+.attic/
+CLAUDE.md
