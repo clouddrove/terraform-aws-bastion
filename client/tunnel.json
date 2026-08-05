@@ -1,0 +1,89 @@
+{
+  "$comment": "Drives two scripts. bootstrap.sh writes AWS SSO profiles into ~/.aws/config; tunnel.sh opens the SSM tunnels. Environments reference profiles BY NAME, so tunnel.sh never needs account/role details directly. Replace every placeholder (myorg, myproject, account IDs, sso_start_url, domain_suffix) with your own.",
+
+  "defaults": {
+    "$comment_sso": "Details for the [sso-session <name>] block bootstrap.sh writes. Skip bootstrap entirely if you use plain IAM profiles — just make sure each env's profile below already exists in ~/.aws/config.",
+    "sso_session_name": "myorg-sso",
+    "sso_start_url": "https://myorg.awsapps.com/start",
+    "sso_region": "eu-west-1",
+    "sso_registration_scopes": "sso:account:access",
+
+    "$comment_bastion": "How tunnel.sh finds the jump host: it looks up a running EC2 instance whose Name tag equals this template with {env} substituted. Must match the ssm-jumphost module output (<project>-<env>-ssm-bastion).",
+    "bastion_name_template": "myproject-{env}-ssm-bastion"
+  },
+
+  "$comment_profiles": "bootstrap.sh creates one profile per (account, role) pair. Name = profile_name_template with {account} (key from accounts) and {role_short} (from roles[]). Defaults below produce e.g. myorg-dev-admin, myorg-prod-admin.",
+  "profiles": {
+    "profile_name_template": "myorg-{account}-{role_short}",
+    "default_region_per_account": {
+      "dev": "eu-west-1",
+      "prod": "eu-west-1"
+    },
+    "accounts": {
+      "dev": "111111111111",
+      "prod": "222222222222"
+    },
+    "roles": [
+      { "name": "AdministratorAccess", "short": "admin" }
+    ]
+  },
+
+  "$comment_environments": "tunnel.sh reads this. Each env references a profile BY NAME (must exist in ~/.aws/config). Every resource is opt-in via enabled. Discovery is name/tag based — the first matching resource whose identifier contains the env name wins.",
+  "environments": {
+    "dev": {
+      "profile": "myorg-dev-admin",
+      "region": "eu-west-1",
+      "base_port": 18000,
+
+      "resources": {
+        "eks": {
+          "enabled": true,
+          "$comment": "Discovered via aws eks list-clusters; first cluster whose name contains the env name wins. Writes a kubeconfig context at ~/.kube/config-tunnel."
+        },
+        "internal_alb": {
+          "enabled": false,
+          "$comment_tags": "Tag-based discovery. {env} is substituted. Any one tag set matching wins.",
+          "tag_filters": [
+            { "elbv2.k8s.aws/cluster": "{env}-eks", "ingress.k8s.aws/stack": "internal" }
+          ],
+          "$comment_sni": "If sni_hosts is empty, tunnel.sh reads the ALB listener host-header rules and routes each via HAProxy SNI.",
+          "sni_hosts": []
+        },
+        "aurora": {
+          "enabled": false,
+          "$comment": "Aurora cluster endpoint via describe-db-clusters; first cluster whose ID contains env name wins.",
+          "endpoint_type": "writer"
+        },
+        "rds_proxy": {
+          "enabled": false,
+          "$comment": "RDS Proxy via describe-db-proxies; first proxy whose name contains env name wins."
+        },
+        "redis": {
+          "enabled": false,
+          "$comment": "ElastiCache Serverless (Redis/Valkey) via describe-serverless-caches. Direct local port, no HAProxy.",
+          "tls": true
+        }
+      }
+    },
+
+    "prod": {
+      "profile": "myorg-prod-admin",
+      "region": "eu-west-1",
+      "base_port": 20000,
+
+      "resources": {
+        "eks": { "enabled": true },
+        "internal_alb": {
+          "enabled": false,
+          "tag_filters": [
+            { "elbv2.k8s.aws/cluster": "{env}-eks", "ingress.k8s.aws/stack": "internal" }
+          ],
+          "sni_hosts": []
+        },
+        "aurora": { "enabled": false, "endpoint_type": "writer" },
+        "rds_proxy": { "enabled": false },
+        "redis": { "enabled": false, "tls": true }
+      }
+    }
+  }
+}

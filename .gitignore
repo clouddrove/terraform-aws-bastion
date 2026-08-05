@@ -1,0 +1,21 @@
+# Terraform / Terragrunt
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terragrunt-cache/
+
+# Local config with real values — never commit
+terraform.tfvars
+*.auto.tfvars
+client/tunnel.local.json
+
+# OS / editor
+.DS_Store
+*.swp
