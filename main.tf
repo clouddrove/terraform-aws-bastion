@@ -108,7 +108,7 @@ resource "aws_autoscaling_group" "this" {
 }
 
 resource "aws_autoscaling_schedule" "this" {
-  for_each = var.schedule_enabled ? { for s in var.asg_schedules : s.name => s } : {}
+  for_each = var.enabled && var.schedule_enabled ? { for s in var.asg_schedules : s.name => s } : {}
 
   autoscaling_group_name = aws_autoscaling_group.this[0].name
   scheduled_action_name  = each.value.name
