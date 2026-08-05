@@ -5,17 +5,6 @@
 # agent register with Systems Manager and serve Session Manager connections.
 # There are no other permissions and no SSH key — access is exclusively via SSM.
 ##############################################################################
-locals {
-  name = "${var.project_name}-${var.environment}-ssm-bastion"
-
-  common_tags = merge(var.tags, {
-    Project     = var.project_name
-    Environment = var.environment
-    ManagedBy   = "terraform"
-    Module      = "ssm-jumphost"
-  })
-}
-
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
