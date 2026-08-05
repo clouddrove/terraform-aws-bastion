@@ -1,3 +1,6 @@
+##############################################################################
+# Naming and tagging, passed through to clouddrove/labels/aws.
+##############################################################################
 variable "enabled" {
   type        = bool
   description = "Set to false to prevent the module from creating any resources."
@@ -6,7 +9,7 @@ variable "enabled" {
 
 variable "name" {
   type        = string
-  description = "Name of the bastion, used as the first element of the generated resource name (for example \"bastion\")."
+  description = "Name of the bastion, used as the first element of the generated resource name."
   default     = "bastion"
 }
 
@@ -24,7 +27,7 @@ variable "label_order" {
 
 variable "attributes" {
   type        = list(string)
-  description = "Additional name attributes, appended after label_order elements. Pass [\"ssm\"] to get names ending in -ssm."
+  description = "Additional name attributes, appended after the label_order elements. Pass [\"ssm\"] for names ending in -ssm."
   default     = []
 }
 
@@ -46,79 +49,44 @@ variable "extra_tags" {
   default     = {}
 }
 
+##############################################################################
+# Network placement.
+##############################################################################
 variable "vpc_id" {
   type        = string
-  description = "ID of the VPC the jump host is deployed into."
-}
-
-variable "subnet_ids" {
-  type        = list(string)
-  description = "Private subnet IDs for the Auto Scaling Group. The jump host gets no public IP."
-}
-
-variable "instance_type" {
-  type        = string
-  description = "EC2 instance type. t3.micro (x86_64) / t4g.micro (arm64) are ample for tunneling."
-  default     = "t4g.micro"
-}
-
-variable "extra_egress_cidrs" {
-  type        = list(string)
-  description = <<-EOT
-    Extra CIDR blocks the jump host may reach on any port, beyond the VPC CIDR
-    (which is always allowed so it can reach EKS/RDS/Redis). Usually left empty.
-  EOT
-  default     = []
+  description = "ID of the VPC the bastion is deployed into."
 }
 
 variable "vpc_cidr" {
   type        = string
-  description = "VPC CIDR block. The jump host is allowed egress to this range so it can reach in-VPC resources."
+  description = "VPC CIDR block. The bastion is allowed egress to this range so it can reach in-VPC resources."
 }
 
-variable "extra_iam_policy_arns" {
+variable "subnet_ids" {
   type        = list(string)
-  description = "Additional managed IAM policy ARNs to attach to the jump host role (beyond AmazonSSMManagedInstanceCore)."
-  default     = []
-}
-
-variable "target_ingress_rules" {
-  type = list(object({
-    security_group_id = string
-    port              = number
-    description       = optional(string, "From SSM jump host")
-  }))
   description = <<-EOT
-    Security groups of the resources the jump host must reach, each with the port
-    to open. The module attaches an ingress rule to every listed SG allowing that
-    port from the jump host SG — closing the inbound side without editing the
-    targets' own modules. Leave empty for a greenfield deploy with no targets yet.
+    Private subnet IDs for the Auto Scaling Group. The bastion is pinned to no
+    public IP regardless, but private subnets are still the intended placement.
+
+    The VPC must reach AWS Systems Manager, either through the ssm, ssmmessages,
+    and ec2messages interface endpoints or through NAT. Without one of those the
+    SSM agent cannot register and the bastion stays invisible to Session Manager.
   EOT
-  default     = []
 }
 
-variable "user_data" {
+##############################################################################
+# Instance.
+##############################################################################
+variable "instance_type" {
   type        = string
-  description = "Optional cloud-init user-data. Empty by default — the base AL2023 SSM agent is all that is needed."
-  default     = ""
+  description = "EC2 instance type. t4g.micro (arm64) or t3.micro (x86_64). The AMI architecture follows the type."
+  default     = "t4g.micro"
 }
 
-variable "schedule_enabled" {
-  type        = bool
-  description = "Attach start/stop schedules to the ASG to save cost outside working hours."
-  default     = false
-}
-
-variable "asg_schedules" {
-  type = list(object({
-    name             = string
-    min_size         = number
-    max_size         = number
-    desired_capacity = number
-    recurrence       = string # cron expression, UTC
-  }))
-  description = "ASG scheduled actions. Only used when schedule_enabled is true."
-  default     = []
+variable "root_volume_size" {
+  type        = number
+  description = "Root volume size in GiB."
+  default     = 8
 }
 
 variable "kms_key_id" {
@@ -133,27 +101,117 @@ variable "kms_key_id" {
   default     = null
 }
 
-variable "root_volume_size" {
-  type        = number
-  description = "Root volume size in GiB."
-  default     = 8
+variable "user_data" {
+  type        = string
+  description = "Optional cloud-init user data. Empty by default, since the base AL2023 SSM agent is all that is needed."
+  default     = ""
 }
 
-variable "max_instance_lifetime" {
+##############################################################################
+# Capacity.
+##############################################################################
+variable "min_size" {
+  type        = number
+  description = "Minimum ASG size."
+  default     = 0
+}
+
+variable "max_size" {
+  type        = number
+  description = "Maximum ASG size."
+  default     = 1
+}
+
+variable "desired_capacity" {
   type        = number
   description = <<-EOT
-    Maximum instance lifetime in seconds, after which the ASG replaces the
-    instance. A bastion in a private subnet with no NAT cannot reach package
-    repositories, so patching means replacing the instance from a newer AMI
-    rather than updating in place. Minimum accepted by AWS is 86400 (one day).
-    Default is 30 days. Set to null to disable.
+    Number of bastion instances to run. Note that SSM sessions bind to an
+    instance ID and cannot fail over, so a second instance does not keep an
+    in-flight tunnel alive. What it buys is time to reconnect: immediate rather
+    than waiting out an ASG replacement.
   EOT
-  default     = 2592000
+  default     = 1
 }
 
-variable "instance_refresh_enabled" {
+##############################################################################
+# Optional off hours schedule.
+##############################################################################
+variable "schedule_enabled" {
   type        = bool
-  description = "Roll instances automatically when the launch template changes."
+  description = "Attach start and stop schedules to the ASG to save cost outside working hours."
+  default     = false
+}
+
+variable "scheduler_up" {
+  type        = string
+  description = "Cron expression for scaling up to desired_capacity. Used only when schedule_enabled is true."
+  default     = "0 7 * * MON-FRI"
+}
+
+variable "scheduler_down" {
+  type        = string
+  description = "Cron expression for scaling down to zero. Used only when schedule_enabled is true."
+  default     = "0 19 * * *"
+}
+
+variable "schedule_time_zone" {
+  type        = string
+  description = "Time zone for the schedule cron expressions."
+  default     = "UTC"
+}
+
+##############################################################################
+# IAM.
+##############################################################################
+variable "create_iam_role" {
+  type        = bool
+  description = "Set to false to use an externally managed IAM role instead of creating one. Requires iam_role_name."
   default     = true
 }
 
+variable "iam_role_name" {
+  type        = string
+  description = <<-EOT
+    Name of an existing IAM role to attach, used only when create_iam_role is
+    false. The role must carry AmazonSSMManagedInstanceCore or the SSM agent
+    cannot register. Note this is a role name, not an instance profile name:
+    clouddrove/ec2-autoscaling builds the instance profile from it.
+  EOT
+  default     = null
+
+  validation {
+    condition     = var.create_iam_role || var.iam_role_name != null
+    error_message = "iam_role_name is required when create_iam_role is false."
+  }
+}
+
+variable "extra_iam_policy_arns" {
+  type        = list(string)
+  description = "Additional managed IAM policy ARNs to attach to the bastion role, beyond AmazonSSMManagedInstanceCore."
+  default     = []
+}
+
+##############################################################################
+# Connectivity to targets.
+##############################################################################
+variable "extra_egress_cidrs" {
+  type        = list(string)
+  description = "Extra CIDR blocks the bastion may reach on any port, beyond the VPC CIDR. Usually left empty."
+  default     = []
+}
+
+variable "target_ingress_rules" {
+  type = list(object({
+    security_group_id = string
+    port              = number
+    description       = optional(string, "From SSM bastion")
+  }))
+  description = <<-EOT
+    Security groups of the resources the bastion must reach, each with the port
+    to open. The module attaches an ingress rule to every listed security group
+    allowing that port from the bastion security group, closing the inbound side
+    without editing the targets' own modules. Leave empty for a greenfield
+    deploy with no targets yet.
+  EOT
+  default     = []
+}

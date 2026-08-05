@@ -1,29 +1,52 @@
 ##############################################################################
-# Optional: open the target resources' security groups to the jump host.
+# Optional: open the target resources' security groups to the bastion.
 #
-# The jump host SG already permits egress to the whole VPC, but each target
-# (EKS control plane, Aurora/RDS, RDS Proxy, ElastiCache) must also permit
-# INBOUND from the jump host SG. Rather than hand-editing every target's own
-# module, list them here and this module attaches the ingress rules for you.
+# The bastion security group already permits egress to the whole VPC, but each
+# target (EKS control plane, Aurora, RDS Proxy, ElastiCache) must also permit
+# INBOUND from the bastion security group. Rather than hand editing every
+# target's own module, list them here.
+#
+# clouddrove/security-group/aws runs in existing security group mode: new_sg is
+# false and existing_sg_id names the target, so the module adds rules to a
+# security group it does not own.
 #
 # Example:
 #   target_ingress_rules = [
-#     { security_group_id = "sg-eks-cp",  port = 443,  description = "EKS API from jump host" },
-#     { security_group_id = "sg-aurora",  port = 5432, description = "Aurora from jump host" },
-#     { security_group_id = "sg-redis",   port = 6379, description = "Redis from jump host" },
+#     { security_group_id = "sg-0eks",    port = 443,  description = "EKS API from bastion" },
+#     { security_group_id = "sg-0aurora", port = 5432, description = "Aurora from bastion" },
+#     { security_group_id = "sg-0redis",  port = 6379, description = "Redis from bastion" },
 #   ]
 ##############################################################################
-resource "aws_vpc_security_group_ingress_rule" "target" {
+module "target_access" {
+  source  = "clouddrove/security-group/aws"
+  version = "2.0.3"
+
   for_each = var.enabled ? {
-    for r in var.target_ingress_rules : "${r.security_group_id}:${r.port}" => r
+    for rule in var.target_ingress_rules :
+    "${rule.security_group_id}:${rule.port}" => rule
   } : {}
 
-  security_group_id            = each.value.security_group_id
-  referenced_security_group_id = aws_security_group.this[0].id
-  from_port                    = each.value.port
-  to_port                      = each.value.port
-  ip_protocol                  = "tcp"
-  description                  = each.value.description
+  enable      = true
+  name        = var.name
+  environment = var.environment
+  label_order = var.label_order
+  managedby   = var.managedby
+  tags        = var.extra_tags
 
-  tags = merge(module.labels.tags, { Name = "${module.labels.id}-to-${each.value.port}" })
+  vpc_id = var.vpc_id
+
+  # Attach rules to the target's own security group rather than creating one.
+  new_sg         = false
+  existing_sg_id = each.value.security_group_id
+
+  existing_sg_ingress_rules = [
+    {
+      key                          = "from-bastion-${each.value.port}"
+      ip_protocol                  = "tcp"
+      from_port                    = each.value.port
+      to_port                      = each.value.port
+      referenced_security_group_id = module.security_group.security_group_id
+      description                  = each.value.description
+    }
+  ]
 }

@@ -1,50 +1,57 @@
 ##############################################################################
-# Jump host security group.
+# Bastion security group, via clouddrove/security-group/aws.
 #
-# INBOUND: none. SSM Session Manager needs no open ports — the agent dials out.
-# OUTBOUND: the VPC CIDR (to reach EKS/RDS/Redis/ALB) plus any extra CIDRs, and
-#           443 to everything (SSM endpoints / optional NAT path).
+# INBOUND: none. new_sg_ingress_rules is empty and stays empty. SSM Session
+#          Manager needs no open ports because the agent dials out.
+# OUTBOUND: the VPC CIDR, so the bastion can reach EKS, RDS, Redis, and
+#           internal load balancers, plus 443 for the SSM endpoints, plus any
+#           extra CIDRs the consumer asks for.
 ##############################################################################
-resource "aws_security_group" "this" {
-  count = var.enabled ? 1 : 0
-
-  name_prefix = "${module.labels.id}-"
-  description = "Jump host: no inbound, egress to VPC + HTTPS"
-  vpc_id      = var.vpc_id
-
-  tags = merge(module.labels.tags, { Name = "${module.labels.id}-sg" })
-
-  lifecycle {
-    create_before_destroy = true
-  }
+locals {
+  egress_rules = concat(
+    [
+      {
+        key         = "vpc-all"
+        ip_protocol = "-1"
+        cidr_ipv4   = var.vpc_cidr
+        description = "All traffic to the VPC CIDR"
+      },
+      {
+        key         = "https-out"
+        ip_protocol = "tcp"
+        from_port   = 443
+        to_port     = 443
+        cidr_ipv4   = "0.0.0.0/0"
+        description = "HTTPS egress for the SSM interface endpoints and the AWS API"
+      },
+    ],
+    [
+      for cidr in var.extra_egress_cidrs : {
+        key         = "extra-${replace(replace(cidr, "/", "-"), ".", "-")}"
+        ip_protocol = "-1"
+        cidr_ipv4   = cidr
+        description = "Extra egress CIDR"
+      }
+    ],
+  )
 }
 
-# Reach in-VPC resources (EKS apiserver, Aurora, RDS Proxy, Redis, internal ALB).
-resource "aws_vpc_security_group_egress_rule" "vpc" {
-  count = var.enabled ? 1 : 0
+module "security_group" {
+  source  = "clouddrove/security-group/aws"
+  version = "2.0.3"
 
-  security_group_id = aws_security_group.this[0].id
-  description       = "All traffic to the VPC CIDR"
-  cidr_ipv4         = var.vpc_cidr
-  ip_protocol       = "-1"
-}
+  enable      = var.enabled
+  name        = var.name
+  environment = var.environment
+  label_order = var.label_order
+  managedby   = var.managedby
+  tags        = var.extra_tags
 
-# HTTPS out — SSM interface endpoints, and the AWS API path when NAT is enabled.
-resource "aws_vpc_security_group_egress_rule" "https" {
-  count = var.enabled ? 1 : 0
+  vpc_id         = var.vpc_id
+  sg_description = "Bastion: no inbound, egress to the VPC and HTTPS"
 
-  security_group_id = aws_security_group.this[0].id
-  description       = "HTTPS egress (SSM endpoints / AWS API)"
-  cidr_ipv4         = "0.0.0.0/0"
-  from_port         = 443
-  to_port           = 443
-  ip_protocol       = "tcp"
-}
+  # The module's central guarantee. Do not populate this.
+  new_sg_ingress_rules = []
 
-resource "aws_vpc_security_group_egress_rule" "extra" {
-  for_each          = var.enabled ? toset(var.extra_egress_cidrs) : toset([])
-  security_group_id = aws_security_group.this[0].id
-  description       = "Extra egress CIDR"
-  cidr_ipv4         = each.value
-  ip_protocol       = "-1"
+  new_sg_egress_rules = local.egress_rules
 }
