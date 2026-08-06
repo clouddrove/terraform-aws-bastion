@@ -68,8 +68,9 @@ Session Manager.
 
 ```hcl
 module "bastion" {
-  source  = "clouddrove/bastion/aws"
-  version = "1.0.0"
+  # This repository is private and is not published to the Terraform Registry,
+  # so `source = "clouddrove/bastion/aws"` does not resolve. Pin a commit.
+  source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=969b02e"
 
   name        = "myproject"
   environment = "dev"
@@ -79,6 +80,46 @@ module "bastion" {
   subnet_ids = ["subnet-0a", "subnet-0b"]
 }
 ```
+
+There are no tags yet, so `ref` takes a commit SHA. Find the current one with:
+
+```bash
+git ls-remote https://github.com/clouddrove/terraform-aws-bastion.git master
+```
+
+Do not use `ref=master`. Terraform caches modules in `.terraform/modules`, so a
+moving ref means two runs of the same configuration can build different
+infrastructure with no diff to explain it.
+
+### Giving CI access to a private module
+
+`terraform init` clones this repository over the network, so any runner needs
+credentials. Without them it fails with `Repository not found`, which is a
+permissions error rather than a missing repository.
+
+**GitHub Actions**, using a token with read access to this repository:
+
+```yaml
+- name: Allow Terraform to clone private modules
+  run: |
+    git config --global url."https://oauth2:${{ secrets.MODULE_READ_TOKEN }}@github.com".insteadOf "https://github.com"
+- run: terraform init
+```
+
+The default `GITHUB_TOKEN` is scoped to the calling repository alone and cannot
+read this one. Use a fine-grained PAT, a GitHub App installation token, or make
+the runner a member of a team with read access.
+
+**Deploy key**, for CI outside GitHub Actions. Add the public half to this
+repository's deploy keys, then switch the source to SSH:
+
+```hcl
+source = "git::ssh://git@github.com/clouddrove/terraform-aws-bastion.git?ref=969b02e"
+```
+
+Watch for a global `insteadOf` rule rewriting HTTPS to SSH or the reverse. It
+applies to Terraform's clones too, and silently overrides whichever protocol
+the source specifies.
 
 ### Greenfield
 
