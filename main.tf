@@ -219,7 +219,7 @@ module "security_group" {
 ##############################################################################
 module "bastion" {
   source  = "clouddrove/ec2-autoscaling/aws"
-  version = "1.3.4"
+  version = "1.4.0"
 
   enabled     = var.enabled
   name        = var.name
