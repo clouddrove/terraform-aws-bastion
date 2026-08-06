@@ -13,6 +13,16 @@ output "bastion_security_group_id" {
   value       = module.bastion.security_group_id
 }
 
+output "audit_log_group_name" {
+  description = "Log group recording who connected to the bastion, when, and to which target."
+  value       = module.bastion.audit_log_group_name
+}
+
+output "dashboard_url" {
+  description = "Console URL of the bastion dashboard."
+  value       = module.bastion.dashboard_url
+}
+
 output "tunnel_config" {
   description = "Paste into client/tunnel.json."
   value       = module.bastion.tunnel_config

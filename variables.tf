@@ -192,6 +192,91 @@ variable "extra_iam_policy_arns" {
 }
 
 ##############################################################################
+# Session logging and audit.
+##############################################################################
+variable "logging_enabled" {
+  type        = bool
+  description = <<-EOT
+    Record every Session Manager connection to the bastion in CloudWatch Logs.
+    Creates the connection audit log group, an EventBridge rule that writes
+    StartSession, ResumeSession, and TerminateSession events into it, and the
+    CloudWatch Logs permissions the instance role needs.
+
+    Requires a CloudTrail trail logging management events in this region.
+    Session Manager emits no native EventBridge event, so the rule matches
+    CloudTrail-sourced API call events, and those reach EventBridge only while a
+    trail is logging them. Without a trail the log group stays empty.
+  EOT
+  default     = true
+}
+
+variable "log_retention_days" {
+  type        = number
+  description = "Retention in days for both the connection audit and the shell session log groups. 0 keeps logs forever."
+  default     = 7
+
+  validation {
+    condition = contains(
+      [0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653],
+      var.log_retention_days,
+    )
+    error_message = "log_retention_days must be one of the retention periods CloudWatch Logs accepts."
+  }
+}
+
+variable "log_kms_key_id" {
+  type        = string
+  description = <<-EOT
+    ARN of a customer-managed KMS key encrypting both log groups. Leave null to
+    use the AWS-owned key. A supplied key must carry a key policy allowing
+    logs.<region>.amazonaws.com, or log group creation fails.
+  EOT
+  default     = null
+}
+
+variable "session_preferences_managed" {
+  type        = bool
+  description = <<-EOT
+    Create the SSM-SessionManagerRunShell document so interactive shell sessions
+    stream their full terminal output to CloudWatch Logs. Also creates the
+    session log group.
+
+    Off by default because that document is an account and region SINGLETON:
+    turning this on changes shell logging for every SSM session in the region,
+    not only this bastion's, and two deployments in one account collide on it.
+    If the document already exists, import it before enabling:
+
+      terraform import 'module.bastion.aws_ssm_document.session_preferences[0]' SSM-SessionManagerRunShell
+
+    Port forwarding sessions produce no terminal output, so this setting does
+    not affect what client/tunnel.sh records. Those are covered by
+    logging_enabled.
+  EOT
+  default     = false
+}
+
+variable "session_idle_timeout_minutes" {
+  type        = number
+  description = "Minutes an interactive session may sit idle before Session Manager ends it. Written into the session document."
+  default     = 20
+
+  validation {
+    condition     = var.session_idle_timeout_minutes >= 1 && var.session_idle_timeout_minutes <= 60
+    error_message = "session_idle_timeout_minutes must be between 1 and 60."
+  }
+}
+
+variable "dashboard_enabled" {
+  type        = bool
+  description = <<-EOT
+    Create a CloudWatch dashboard showing recent sessions, sessions per
+    principal, and bastion health. Has no effect when logging_enabled is false,
+    since most of the dashboard queries the connection audit log group.
+  EOT
+  default     = true
+}
+
+##############################################################################
 # Connectivity to targets.
 ##############################################################################
 variable "extra_egress_cidrs" {

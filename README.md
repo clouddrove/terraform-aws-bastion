@@ -21,8 +21,8 @@ behave normally.
 
 ## Composition
 
-Every AWS resource is created through a published CloudDrove module. This
-module composes them and declares no `aws_*` resources of its own.
+Every AWS resource is created through a published CloudDrove module, with one
+documented exception.
 
 | Concern | Module | Version |
 |---|---|---|
@@ -31,6 +31,13 @@ module composes them and declares no `aws_*` resources of its own.
 | Bastion security group, zero ingress | `clouddrove/security-group/aws` | 2.0.3 |
 | Per target ingress rules | `clouddrove/security-group/aws` | 2.0.3 |
 | Launch template and Auto Scaling Group | `clouddrove/ec2-autoscaling/aws` | 1.3.4 |
+| Connection audit rule | `clouddrove/cloudwatch-event-rule/aws` | 1.0.2 |
+| Dashboard | `clouddrove/cloudwatch-dashboard/aws` | 1.0.1 |
+
+The exception is session logging, which declares four `aws_*` resources
+directly: two log groups, a log group resource policy, and the SSM session
+document. No CloudDrove module covers any of those.
+[docs/composition-tradeoffs.md](docs/composition-tradeoffs.md) records why.
 
 ## Prerequisite: enable IMDSv2 at the account level
 
@@ -157,13 +164,89 @@ tunnel alive: SSM sessions bind to an instance ID and cannot fail over. What a
 second instance buys is time to reconnect, immediate rather than waiting out an
 Auto Scaling Group replacement of roughly three minutes.
 
-## Audit trail
+## Session logging and audit
 
 CloudTrail is the audit source, not Session Manager transcript logging.
 Transcripts capture terminal output, and port forwarding sessions have no
 terminal. CloudTrail `StartSession` events carry the caller identity, the target
 instance, the document name, and the port forwarding parameters, which is who
 connected, when, and to which private host and port.
+
+The module turns that into two log groups, both at `log_retention_days` (7 by
+default), and one dashboard.
+
+| Log group | Holds | Created when |
+|---|---|---|
+| `/aws/bastion/<name>/connections` | One flat record per `StartSession`, `ResumeSession`, and `TerminateSession`: principal, source IP, target instance, tunnelled host and port, session ID | `logging_enabled` (default true) |
+| `/aws/ssm/session/<name>` | Full terminal transcripts of interactive shells | `session_preferences_managed` (default false) |
+
+The connection audit covers every session type, including the port forwards
+`client/tunnel.sh` opens. Transcript logging covers interactive shells only.
+
+### Prerequisite: a CloudTrail trail in the region
+
+Session Manager publishes no native EventBridge event, so the audit rule matches
+CloudTrail-sourced API calls, and those reach EventBridge only while a trail is
+logging management events. Without a trail the log group stays empty and the
+dashboard shows nothing.
+
+```bash
+aws cloudtrail describe-trails --query 'trailList[].{Name:Name,Multi:IsMultiRegionTrail}' --output table
+```
+
+Most accounts already have an organization trail. The module does not create
+one, because a trail is account level state that outlives any single bastion.
+
+### Turning on shell transcripts
+
+`session_preferences_managed = true` creates `SSM-SessionManagerRunShell`. That
+document is an **account and region singleton**: it governs shell logging for
+every SSM session in the region, not only this bastion's, and two deployments in
+one account collide on it. Leave it false in shared accounts.
+
+If the document already exists, import it first or the apply fails:
+
+```bash
+terraform import 'module.bastion.aws_ssm_document.session_preferences[0]' SSM-SessionManagerRunShell
+```
+
+Running with `create_iam_role = false` means the module cannot grant the
+instance the CloudWatch Logs writes transcripts need, since it does not own the
+role. Attach `terraform output -raw session_log_policy_json` to your role
+yourself.
+
+### Dashboard
+
+`terraform output -raw dashboard_url` opens it. Seven widgets: recent sessions,
+sessions per principal, event counts, instances in service, CPU, network, and
+shell transcripts. Log widgets follow the dashboard time picker, which defaults
+to the last 7 days.
+
+Session duration is not a widget, because it needs start and end paired by
+session ID. Run this in Logs Insights against the audit group instead:
+
+```
+fields @timestamp, event, principal, coalesce(sessionId, endedSession) as sid, targetHost, targetPort
+| stats earliest(principal) as who,
+        earliest(targetHost) as host,
+        earliest(targetPort) as port,
+        min(@timestamp) as started,
+        max(@timestamp) as ended,
+        (max(@timestamp) - min(@timestamp)) / 1000 as duration_seconds
+  by sid
+| sort started desc
+```
+
+A row with `duration_seconds` near zero is a session still open, or one whose
+`TerminateSession` fell outside the query window.
+
+### Scope of the audit rule
+
+Session targets are instance IDs the Auto Scaling group assigns at launch, so
+they cannot be matched in a static EventBridge pattern. The rule therefore
+records SSM sessions to **every instance in the region**, not only this
+bastion's. That is a wider net rather than a narrower one; the `instance` field
+identifies which host each session went to.
 
 ## Cost
 
@@ -173,11 +256,19 @@ connected, when, and to which private host and port.
 - Interface VPC endpoints cost roughly 7 USD per month each per AZ, three of
   them. Still cheaper and more private than a NAT gateway, which is why
   `examples/complete` uses endpoints.
+- Session logging is close to free. Connection records are a few hundred bytes
+  each and a busy team produces a few thousand a month, well under 1 USD of
+  ingestion at 7 day retention. Shell transcripts scale with terminal output, so
+  budget more if `session_preferences_managed` is on and sessions are chatty.
+  The dashboard is free: an account gets 3 at no charge, then 3 USD each.
 
 ## Security notes
 
-- The instance role carries only `AmazonSSMManagedInstanceCore`. Add more
-  through `extra_iam_policy_arns` only with a concrete reason.
+- The instance role carries `AmazonSSMManagedInstanceCore` plus, when
+  `logging_enabled` is true, an inline policy allowing CloudWatch Logs writes
+  under `/aws/ssm/session/`. That managed policy grants no `logs:PutLogEvents`,
+  so shell transcripts do not stream without it. Add anything further through
+  `extra_iam_policy_arns` only with a concrete reason.
 - Restrict who may connect with IAM: scope `ssm:StartSession` on the
   `AWS-StartPortForwardingSessionToRemoteHost` document to the intended roles.
 - There are no long lived keys on the host to rotate.

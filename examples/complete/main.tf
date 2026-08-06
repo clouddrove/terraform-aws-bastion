@@ -93,6 +93,20 @@ module "bastion" {
 
   instance_type = var.instance_type
 
+  # Every Session Manager connection is recorded: principal, target, and time.
+  # Needs a CloudTrail trail logging management events in this region, since
+  # Session Manager publishes no native EventBridge event.
+  logging_enabled    = true
+  log_retention_days = 7
+  dashboard_enabled  = true
+
+  # Left false on purpose. Turning it on takes over the account and region wide
+  # SSM-SessionManagerRunShell document, which changes shell logging for every
+  # SSM session in the region rather than only this bastion's. It also adds
+  # nothing for client/tunnel.sh, whose port forwarding sessions carry no
+  # terminal output.
+  session_preferences_managed = false
+
   # Open the targets you want the bastion to reach. Fill this in once the
   # EKS cluster, database, or cache exists.
   #

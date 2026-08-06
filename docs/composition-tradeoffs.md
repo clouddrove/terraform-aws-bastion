@@ -1,8 +1,9 @@
 # What composing CloudDrove modules costs, and how to cover it
 
 This module creates every AWS resource through a published CloudDrove module
-rather than declaring `aws_*` resources itself. That is a deliberate choice.
-It also means the module can only express what those modules expose.
+rather than declaring `aws_*` resources itself, with one documented exception
+covered at the end of this page. That is a deliberate choice. It also means the
+module can only express what those modules expose.
 
 Three properties the previous raw-resource version enforced cannot be set
 through `clouddrove/ec2-autoscaling/aws` 1.3.4. Verified by reading the module
@@ -79,6 +80,50 @@ whether scaling policies and CPU alarms are created. It does not: it gates the
 launch template and the Auto Scaling Group themselves. Setting it `false`
 creates no bastion at all. The scaling policies and alarms are disabled through
 their own flags instead.
+
+## The one exception: four raw resources for session logging
+
+The CloudDrove registry has no module for a CloudWatch log group, an SSM
+document, or a log group resource policy. Session logging therefore declares
+four `aws_*` resources directly:
+
+| Resource | Why no module |
+| --- | --- |
+| `aws_cloudwatch_log_group.audit` | No `clouddrove/cloudwatch-logs/aws` exists. The registry has `cloudwatch-alarms`, `cloudwatch-dashboard`, `cloudwatch-event-rule`, and `cloudwatch-synthetics`, but no log group module |
+| `aws_cloudwatch_log_group.session` | Same |
+| `aws_cloudwatch_log_resource_policy.events_to_audit_log` | Same. EventBridge cannot write to a log group without it |
+| `aws_ssm_document.session_preferences` | No CloudDrove SSM document module |
+
+Everything else in that feature is composed as usual: the EventBridge rule and
+its target come from `clouddrove/cloudwatch-event-rule`, the dashboard from
+`clouddrove/cloudwatch-dashboard`, and the instance role's CloudWatch Logs
+permissions ride on the existing `clouddrove/iam-role` through its inline
+`policy` input.
+
+Publishing `clouddrove/terraform-aws-cloudwatch-logs` would close three of the
+four. The SSM document is a single resource with no reusable surface worth a
+module.
+
+### Three quirks in `clouddrove/cloudwatch-event-rule` 1.0.2
+
+**Its rule name ignores `attributes`.** It pins `clouddrove/labels/aws` 1.3.0
+and does not pass `attributes` through, so the rule is named
+`<name>-<environment>` while every other resource here carries the attribute
+suffix, for example `myproject-dev` against `myproject-dev-ssm`. Cosmetic, but
+it makes the rule sort away from the rest in the console.
+
+
+**Its `arn` output is a list, not a string.** The rule is count-gated and the
+output is `aws_cloudwatch_event_rule.default.*.arn`. The log group resource
+policy passes it straight into the `aws:SourceArn` condition values rather than
+wrapping it.
+
+**It always renders an `input_transformer` block.** Leaving `input_template`
+empty would be rejected by the API, so a transformer is not optional here. This
+module supplies one that flattens the CloudTrail envelope into a single audit
+record per event. Every placeholder in the template is quoted, because a path
+absent from a given event, such as `requestParameters.target` on
+`TerminateSession`, would otherwise leave a hole where valid JSON must be.
 
 ## If these gaps matter more than the composition
 
