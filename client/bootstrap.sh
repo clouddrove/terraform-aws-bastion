@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # bootstrap.sh — idempotent provisioner for ~/.aws/config (AWS SSO profiles).
 #
+# Part of the CloudDrove terraform-aws-bastion module.
+#   https://github.com/clouddrove/terraform-aws-bastion
+#   https://clouddrove.com
+#
 # Reads tunnel.json and manages:
 #   - One [sso-session <name>] block (from .defaults.sso_session_name)
 #   - One [profile <name>] block per (account, role) pair, where:
@@ -36,6 +40,25 @@ while [[ $# -gt 0 ]]; do
     *) echo "[ERROR] Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
+
+#############################################################################
+# Banner
+#############################################################################
+print_banner() {
+  cat <<'EOF'
+
+   ____ _                 _ ____
+  / ___| | ___  _   _  __| |  _ \ _ __ _____   _____
+ | |   | |/ _ \| | | |/ _` | | | | '__/ _ \ \ / / _ \
+ | |___| | (_) | |_| | (_| | |_| | | | (_) \ V /  __/
+  \____|_|\___/ \__,_|\__,_|____/|_|  \___/ \_/ \___|
+
+  AWS SSO Profile Bootstrap  ::  terraform-aws-bastion
+  https://clouddrove.com
+
+EOF
+}
+print_banner
 
 [[ -f "$CONFIG_FILE" ]] || { echo "[FATAL] Config not found: $CONFIG_FILE" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "[FATAL] jq not installed" >&2; exit 1; }
@@ -224,3 +247,6 @@ else
   echo "  2. Verify a profile works:"
   echo "       aws sts get-caller-identity --profile <profile-name>"
 fi
+
+echo ""
+echo "Built with ❤️  by CloudDrove  ::  https://clouddrove.com  ::  hello@clouddrove.com"

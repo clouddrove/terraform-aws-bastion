@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # tunnel.sh — JSON-driven SSM port-forwarding + HAProxy SNI router.
 #
+# Part of the CloudDrove terraform-aws-bastion module.
+#   https://github.com/clouddrove/terraform-aws-bastion
+#   https://clouddrove.com
+#
 # PREREQUISITE (SSO only): run ./bootstrap.sh once to create the AWS profiles
 # referenced from each environment in tunnel.json. If you use plain IAM
 # profiles, skip bootstrap and just reference existing profile names.
@@ -38,6 +42,25 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+#############################################################################
+# Banner
+#############################################################################
+print_banner() {
+  cat <<'EOF'
+
+   ____ _                 _ ____
+  / ___| | ___  _   _  __| |  _ \ _ __ _____   _____
+ | |   | |/ _ \| | | |/ _` | | | | '__/ _ \ \ / / _ \
+ | |___| | (_) | |_| | (_| | |_| | | | (_) \ V /  __/
+  \____|_|\___/ \__,_|\__,_|____/|_|  \___/ \_/ \___|
+
+  SSM Jump Host Tunnel  ::  terraform-aws-bastion
+  https://clouddrove.com
+
+EOF
+}
+print_banner
 
 for cmd in aws jq haproxy curl session-manager-plugin; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "[FATAL] Missing: $cmd" >&2; exit 1; }
@@ -510,6 +533,8 @@ echo "Examples:"
 echo "  kubectl --kubeconfig ~/.kube/config-tunnel --context <env> get nodes"
 echo "  psql 'host=<aurora-host> port=5432 sslmode=require dbname=<db> user=<user>'"
 echo "  redis-cli -h localhost -p <local-port> --tls"
+echo "================================================================================================================================"
+echo "Built with ❤️  by CloudDrove  ::  https://clouddrove.com  ::  hello@clouddrove.com"
 echo ""
 
 while true; do sleep 1; done
