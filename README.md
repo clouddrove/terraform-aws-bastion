@@ -88,8 +88,7 @@ This table contains both Prerequisites and Providers:
 |---|---|
 | [Consuming this module](docs/consuming.md) | Pinning a version, and giving CI read access to a private repository |
 | [Session logging and audit](docs/session-logging.md) | The two log groups, the CloudTrail prerequisite, the dashboard, and availability |
-| [Client: opening the tunnels](docs/client-tunnels.md) | `bootstrap.sh`, `tunnel.sh`, and the services they reach |
-| [Cost, security, troubleshooting](docs/operations.md) | What it costs to run, the security posture, and common failures |
+| [Client: tunnels, cost, troubleshooting](docs/client.md) | `bootstrap.sh`, `tunnel.sh`, every service they reach, what it costs, and common failures |
 | [Composition trade-offs](docs/composition-tradeoffs.md) | What composing published modules costs, and how to cover it |
 
 

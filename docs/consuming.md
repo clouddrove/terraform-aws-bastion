@@ -69,7 +69,7 @@ the source specifies.
 
 ### Greenfield
 
-[`examples/complete`](examples/complete) builds the VPC, private subnets, and
+[`examples/complete`](../examples/complete) builds the VPC, private subnets, and
 SSM interface endpoints from `clouddrove/vpc/aws` and `clouddrove/subnet/aws`,
 then the bastion on top. No NAT gateway and no public subnets.
 
