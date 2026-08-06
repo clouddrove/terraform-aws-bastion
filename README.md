@@ -23,6 +23,9 @@
 <a href="CHANGELOG.md">
   <img src="https://img.shields.io/badge/Changelog-blue" alt="Changelog">
 </a>
+<a href="https://registry.terraform.io/modules/clouddrove/bastion/aws/latest">
+  <img src="https://img.shields.io/badge/Terraform%20Registry-1.0.0-blueviolet" alt="Terraform Registry">
+</a>
 
 
 </p>
@@ -86,7 +89,7 @@ This table contains both Prerequisites and Providers:
 
 | Page | Covers |
 |---|---|
-| [Consuming this module](docs/consuming.md) | Pinning a version, and giving CI read access to a private repository |
+| [Consuming this module](docs/consuming.md) | Registry source, version pinning, and tracking an unreleased commit |
 | [Session logging and audit](docs/session-logging.md) | The two log groups, the CloudTrail prerequisite, the dashboard, and availability |
 | [Client: tunnels, cost, troubleshooting](docs/client.md) | `bootstrap.sh`, `tunnel.sh`, every service they reach, what it costs, and common failures |
 | [Composition trade-offs](docs/composition-tradeoffs.md) | What composing published modules costs, and how to cover it |

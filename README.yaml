@@ -27,6 +27,9 @@ badges:
   - name: "Changelog"
     image: "https://img.shields.io/badge/Changelog-blue"
     url: "CHANGELOG.md"
+  - name: "Terraform Registry"
+    image: "https://img.shields.io/badge/Terraform%20Registry-1.0.0-blueviolet"
+    url: "https://registry.terraform.io/modules/clouddrove/bastion/aws/latest"
 
 prerequesties:
   - name: Terraform
@@ -107,9 +110,9 @@ description: |-
 
   ## Consuming this module
 
-  This repository is private and is not published to the Terraform Registry, so
-  `source = "clouddrove/bastion/aws"` does not resolve. Pin a tag with a git source, and give
-  CI read access to the repository or `terraform init` fails with `Repository not found`.
+  Published on the Terraform Registry as `clouddrove/bastion/aws`. Pin `version` to an exact
+  release rather than a range: a bastion is security infrastructure, and an unattended minor
+  bump can change the launch template and replace the instance underneath a running tunnel.
 
 usage: |-
   Here are examples of how you can use this module in your inventory structure:
@@ -122,7 +125,8 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
+      source  = "clouddrove/bastion/aws"
+      version = "1.0.0"
 
       name        = "myproject"
       environment = "dev"
@@ -142,7 +146,8 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
+      source  = "clouddrove/bastion/aws"
+      version = "1.0.0"
 
       name        = "myproject"
       environment = "dev"
@@ -165,7 +170,8 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
+      source  = "clouddrove/bastion/aws"
+      version = "1.0.0"
 
       name        = "myproject"
       environment = "dev"
@@ -184,7 +190,8 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
+      source  = "clouddrove/bastion/aws"
+      version = "1.0.0"
 
       name        = "myproject"
       environment = "dev"
