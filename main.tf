@@ -156,6 +156,7 @@ module "iam_role" {
   environment = var.environment
   label_order = var.label_order
   managedby   = var.managedby
+  repository  = var.repository
   tags        = var.extra_tags
 
   description        = "Bastion instance role. SSM Session Manager access only."
@@ -188,6 +189,7 @@ module "security_group" {
   environment = var.environment
   label_order = var.label_order
   managedby   = var.managedby
+  repository  = var.repository
   tags        = var.extra_tags
 
   vpc_id         = var.vpc_id
@@ -224,6 +226,7 @@ module "bastion" {
   environment = var.environment
   label_order = var.label_order
   managedby   = var.managedby
+  repository  = var.repository
   tags        = var.extra_tags
 
   image_id      = local.ami_ssm_path
@@ -301,6 +304,7 @@ module "target_access" {
   environment = var.environment
   label_order = var.label_order
   managedby   = var.managedby
+  repository  = var.repository
   tags        = var.extra_tags
 
   vpc_id = var.vpc_id
