@@ -108,7 +108,7 @@ description: |-
   ## Consuming this module
 
   This repository is private and is not published to the Terraform Registry, so
-  `source = "clouddrove/bastion/aws"` does not resolve. Pin a commit with a git source, and give
+  `source = "clouddrove/bastion/aws"` does not resolve. Pin a tag with a git source, and give
   CI read access to the repository or `terraform init` fails with `Repository not found`.
 
 usage: |-
@@ -122,7 +122,7 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
 
       name        = "myproject"
       environment = "dev"
@@ -142,7 +142,7 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
 
       name        = "myproject"
       environment = "dev"
@@ -165,7 +165,7 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
 
       name        = "myproject"
       environment = "dev"
@@ -184,7 +184,7 @@ usage: |-
 
   ```hcl
     module "bastion" {
-      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
 
       name        = "myproject"
       environment = "dev"

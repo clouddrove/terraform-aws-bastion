@@ -69,8 +69,8 @@ Session Manager.
 ```hcl
 module "bastion" {
   # This repository is private and is not published to the Terraform Registry,
-  # so `source = "clouddrove/bastion/aws"` does not resolve. Pin a commit.
-  source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=969b02e"
+  # so `source = "clouddrove/bastion/aws"` does not resolve. Pin a tag.
+  source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
 
   name        = "myproject"
   environment = "dev"
@@ -81,11 +81,14 @@ module "bastion" {
 }
 ```
 
-There are no tags yet, so `ref` takes a commit SHA. Find the current one with:
+`ref` takes a tag. List what is available with:
 
 ```bash
-git ls-remote https://github.com/clouddrove/terraform-aws-bastion.git master
+git ls-remote --tags https://github.com/clouddrove/terraform-aws-bastion.git
 ```
+
+A commit SHA works too, and is the right choice for pinning to something that
+has no tag yet.
 
 Do not use `ref=master`. Terraform caches modules in `.terraform/modules`, so a
 moving ref means two runs of the same configuration can build different
@@ -114,7 +117,7 @@ the runner a member of a team with read access.
 repository's deploy keys, then switch the source to SSH:
 
 ```hcl
-source = "git::ssh://git@github.com/clouddrove/terraform-aws-bastion.git?ref=969b02e"
+source = "git::ssh://git@github.com/clouddrove/terraform-aws-bastion.git?ref=1.0.0"
 ```
 
 Watch for a global `insteadOf` rule rewriting HTTPS to SSH or the reverse. It
