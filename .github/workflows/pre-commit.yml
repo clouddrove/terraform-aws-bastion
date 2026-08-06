@@ -1,3 +1,4 @@
+---
 name: pre-commit
 on:
   pull_request:
@@ -33,5 +34,11 @@ jobs:
       - name: Setup pre-commit
         run: pip install pre-commit
 
+      # Deliberately not `SKIP=terraform_validate,terraform_tflint ... || true`,
+      # which is what the other modules run. That setup installs Terraform,
+      # TFLint, and terraform-docs and then declines to use two of them, and the
+      # trailing `|| true` means the job cannot fail at all. All seven hooks pass
+      # on this repository, so the gate is real here.
       - name: Run pre-commit
-        run: SKIP=terraform_validate,terraform_tflint pre-commit run -a --show-diff-on-failure || true
+        run: pre-commit run -a --show-diff-on-failure
+...
