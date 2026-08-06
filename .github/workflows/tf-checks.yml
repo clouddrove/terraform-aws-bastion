@@ -1,17 +1,25 @@
+---
 name: tf-checks
+
 on:
-  push:
-    branches: [ master ]
   pull_request:
+    paths:
+      - '**/*.tf'
+      - '*.tf'
   workflow_dispatch:
 jobs:
-  # Only examples/complete is checked here. It is the one example that stands
-  # alone, because it builds its own VPC, subnets, and SSM endpoints. The other
-  # four take an existing vpc_id and subnet_ids with no defaults, so they cannot
-  # plan unattended. They are covered by the fmt and validate pass in
-  # pre-commit.
+  # Only examples/complete is checked. It is the one example that stands alone,
+  # because it builds its own VPC, subnets, and SSM endpoints. The other four
+  # take an existing vpc_id and subnet_ids with no defaults, so they cannot plan
+  # unattended. They are covered by fmt and validate in pre-commit.
+  #
+  # provider is none, so this validates without assuming a role. The shared
+  # workflow's provider: aws path needs a BUILD_ROLE secret for OIDC, which this
+  # repository does not have.
   tf-checks-complete-example:
-    uses: clouddrove/github-shared-workflows/.github/workflows/tf-checks.yml@master
+    if: github.actor != 'dependabot[bot]'
+    uses: clouddrove/github-shared-workflows/.github/workflows/tf-checks.yml@v2
     with:
       working_directory: './examples/complete/'
       provider: none
+...
