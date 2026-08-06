@@ -1,0 +1,204 @@
+---
+#
+# This is the canonical configuration for the `README.md`
+# Run `make readme` to rebuild the `README.md`
+#
+
+# Name of this project
+name: Terraform AWS Bastion
+
+# License of this project
+license: "APACHE"
+
+# Canonical GitHub repo
+github_repo: clouddrove/terraform-aws-bastion
+
+# Badges to display
+badges:
+  - name: "Latest Release"
+    image: "https://img.shields.io/github/release/clouddrove/terraform-aws-bastion.svg"
+    url: "https://github.com/clouddrove/terraform-aws-bastion/releases/latest"
+  - name: "tfsec"
+    image: "https://github.com/clouddrove/terraform-aws-bastion/actions/workflows/tfsec.yml/badge.svg"
+    url: "https://github.com/clouddrove/terraform-aws-bastion/actions/workflows/tfsec.yml"
+  - name: "Licence"
+    image: "https://img.shields.io/badge/License-APACHE-blue.svg"
+    url: "LICENSE.md"
+  - name: "Changelog"
+    image: "https://img.shields.io/badge/Changelog-blue"
+    url: "CHANGELOG.md"
+
+prerequesties:
+  - name: Terraform
+    url: https://learn.hashicorp.com/terraform/getting-started/install.html
+    version: ">= 1.5.0"
+
+providers:
+  - name: aws
+    url: https://aws.amazon.com/
+    version: ">= 5.83.0"
+
+module_dependencies:
+  - name: Labels Module
+    url: https://github.com/clouddrove/terraform-aws-labels
+    description: Provides resource tagging.
+  - name: IAM Role Module
+    url: https://github.com/clouddrove/terraform-aws-iam-role
+    description: Builds the instance role.
+  - name: Security Group Module
+    url: https://github.com/clouddrove/terraform-aws-security-group
+    description: Builds the bastion security group and the target ingress rules.
+  - name: EC2 Autoscaling Module
+    url: https://github.com/clouddrove/terraform-aws-ec2-autoscaling
+    description: Builds the launch template and the Auto Scaling Group.
+  - name: CloudWatch Event Rule Module
+    url: https://github.com/clouddrove/terraform-aws-cloudwatch-event-rule
+    description: Routes Session Manager connection events into the audit log group.
+  - name: CloudWatch Dashboard Module
+    url: https://github.com/clouddrove/terraform-aws-cloudwatch-dashboard
+    description: Builds the bastion dashboard.
+
+#  description of this project
+description: |-
+  Reach private cloud resources (EKS API server, internal ALBs, Aurora, RDS Proxy, ElastiCache)
+  from your laptop without exposing anything to the internet.
+
+  The bastion is a small EC2 instance in private subnets with **no SSH key**, **no public IP**,
+  and **no inbound security group rules**. Access is exclusively through AWS Systems Manager
+  Session Manager, authenticated by your own IAM or SSO identity.
+
+  A companion client script in `client/` opens SSM port forwarding tunnels and routes them
+  through a local HAProxy so the real hostnames resolve to `localhost`, which means TLS and
+  certificate validation keep working end to end. `kubectl`, `psql`, and `redis-cli` all behave
+  normally.
+
+  ## Session logging and audit
+
+  Every Session Manager connection is recorded in CloudWatch Logs, at 7 day retention by default,
+  and surfaced on a dashboard.
+
+  | Log group | Holds | Created when |
+  |---|---|---|
+  | `/aws/bastion/<name>/connections` | One flat record per `StartSession`, `ResumeSession`, `TerminateSession`: principal, source IP, target instance, tunnelled host and port, session ID | `logging_enabled`, default true |
+  | `/aws/ssm/session/<name>` | Full terminal transcripts of interactive shells | `session_preferences_managed`, default false |
+
+  CloudTrail is the audit source rather than transcript logging, because port forwarding sessions
+  have no terminal and so produce no transcript. **This requires a CloudTrail trail logging
+  management events in the region**: Session Manager publishes no native EventBridge event, so the
+  audit rule matches CloudTrail-sourced API calls, and those reach EventBridge only while a trail
+  is logging them. Without a trail the log group stays empty.
+
+  `session_preferences_managed` creates `SSM-SessionManagerRunShell`, which is an account and
+  region **singleton**. It governs shell logging for every SSM session in the region, not only
+  this bastion's, and two deployments in one account collide on it. That is why it is off by
+  default. If the document already exists, import it before enabling:
+
+  ```bash
+  terraform import 'module.bastion.aws_ssm_document.session_preferences[0]' SSM-SessionManagerRunShell
+  ```
+
+  ## Composition
+
+  Every AWS resource is created through a published CloudDrove module, with one documented
+  exception: session logging declares four `aws_*` resources directly, being two log groups, a log
+  group resource policy, and the SSM session document. No CloudDrove module covers any of those.
+  See `docs/composition-tradeoffs.md`, which also records the gaps composition costs, such as
+  IMDSv2 needing to be set at the account level.
+
+  ## Consuming this module
+
+  This repository is private and is not published to the Terraform Registry, so
+  `source = "clouddrove/bastion/aws"` does not resolve. Pin a commit with a git source, and give
+  CI read access to the repository or `terraform init` fails with `Repository not found`.
+
+usage: |-
+  Here are examples of how you can use this module in your inventory structure:
+
+  ### Basic, in a VPC you already have
+
+  The VPC must already reach Systems Manager, either through the `ssm`, `ssmmessages`, and
+  `ec2messages` interface endpoints or through NAT. Without one of those the SSM agent cannot
+  register and the bastion never appears in Session Manager.
+
+  ```hcl
+    module "bastion" {
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+
+      name        = "myproject"
+      environment = "dev"
+      attributes  = ["ssm"]
+
+      vpc_id     = "vpc-0abc"
+      vpc_cidr   = "10.60.0.0/16"
+      subnet_ids = ["subnet-0a", "subnet-0b"]
+    }
+  ```
+
+  ### Opening the path to targets
+
+  The bastion security group already permits egress to the whole VPC, but each target must also
+  permit inbound from the bastion. `target_ingress_rules` adds that rule to every listed security
+  group, so the targets' own modules stay untouched.
+
+  ```hcl
+    module "bastion" {
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+
+      name        = "myproject"
+      environment = "dev"
+
+      vpc_id     = "vpc-0abc"
+      vpc_cidr   = "10.60.0.0/16"
+      subnet_ids = ["subnet-0a", "subnet-0b"]
+
+      target_ingress_rules = [
+        { security_group_id = "sg-0eks",    port = 443,  description = "EKS API from bastion" },
+        { security_group_id = "sg-0aurora", port = 5432, description = "Aurora from bastion" },
+        { security_group_id = "sg-0redis",  port = 6379, description = "Redis from bastion" },
+      ]
+    }
+  ```
+
+  ### Full shell transcripts
+
+  Read the singleton warning above before enabling this.
+
+  ```hcl
+    module "bastion" {
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+
+      name        = "myproject"
+      environment = "dev"
+
+      vpc_id     = "vpc-0abc"
+      vpc_cidr   = "10.60.0.0/16"
+      subnet_ids = ["subnet-0a", "subnet-0b"]
+
+      session_preferences_managed  = true
+      session_idle_timeout_minutes = 15
+      log_retention_days           = 30
+    }
+  ```
+
+  ### Bastion only, no logging
+
+  ```hcl
+    module "bastion" {
+      source = "git::https://github.com/clouddrove/terraform-aws-bastion.git?ref=<sha>"
+
+      name        = "myproject"
+      environment = "dev"
+
+      vpc_id     = "vpc-0abc"
+      vpc_cidr   = "10.60.0.0/16"
+      subnet_ids = ["subnet-0a", "subnet-0b"]
+
+      logging_enabled   = false
+      dashboard_enabled = false
+    }
+  ```
+
+  ### Greenfield
+
+  `examples/complete` builds the VPC, private subnets, and SSM interface endpoints alongside the
+  bastion, with no NAT gateway and no public subnets.
