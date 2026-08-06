@@ -1,5 +1,5 @@
 {
-  "$comment": "Drives two scripts. bootstrap.sh writes AWS SSO profiles into ~/.aws/config; tunnel.sh opens the SSM tunnels. Environments reference profiles BY NAME, so tunnel.sh never needs account/role details directly. Replace every placeholder (myorg, myproject, account IDs, sso_start_url, domain_suffix) with your own.",
+  "$comment": "Drives two scripts. bootstrap.sh writes AWS SSO profiles into ~/.aws/config; tunnel.sh opens the SSM tunnels. Environments reference profiles BY NAME, so tunnel.sh never needs account/role details directly. Replace every placeholder (myorg, myproject, account IDs, sso_start_url) with your own.",
 
   "defaults": {
     "$comment_sso": "Details for the [sso-session <name>] block bootstrap.sh writes. Skip bootstrap entirely if you use plain IAM profiles — just make sure each env's profile below already exists in ~/.aws/config.",
@@ -8,7 +8,7 @@
     "sso_region": "eu-west-1",
     "sso_registration_scopes": "sso:account:access",
 
-    "$comment_bastion": "How tunnel.sh finds the jump host: it looks up a running EC2 instance whose Name tag equals this template with {env} substituted. Must match the ssm-jumphost module output (<project>-<env>-ssm-bastion).",
+    "$comment_bastion": "How tunnel.sh finds the jump host: it looks up a running EC2 instance whose Name tag equals this template with {env} substituted. Must match the module's `name` output.",
     "bastion_name_template": "myproject-{env}-ssm-bastion"
   },
 
@@ -29,6 +29,7 @@
   },
 
   "$comment_environments": "tunnel.sh reads this. Each env references a profile BY NAME (must exist in ~/.aws/config). Every resource is opt-in via enabled. Discovery is name/tag based — the first matching resource whose identifier contains the env name wins.",
+  "$comment_ports": "Local ports auto-allocate from base_port. Resources on 443 and 5432 route through HAProxy by SNI so the real hostname resolves locally and certificate validation still passes. Everything else is a direct local-port tunnel.",
   "environments": {
     "dev": {
       "profile": "myorg-dev-admin",
@@ -49,20 +50,67 @@
           "$comment_sni": "If sni_hosts is empty, tunnel.sh reads the ALB listener host-header rules and routes each via HAProxy SNI.",
           "sni_hosts": []
         },
+
         "aurora": {
           "enabled": false,
-          "$comment": "Aurora cluster endpoint via describe-db-clusters; first cluster whose ID contains env name wins.",
+          "$comment": "Aurora cluster endpoint via describe-db-clusters; first cluster whose ID contains env name wins. Routed through the 5432 SNI frontend.",
           "endpoint_type": "writer"
         },
         "rds_proxy": {
           "enabled": false,
-          "$comment": "RDS Proxy via describe-db-proxies; first proxy whose name contains env name wins."
+          "$comment": "RDS Proxy via describe-db-proxies; first proxy whose name contains env name wins. Routed through the 5432 SNI frontend."
         },
+        "postgres": {
+          "enabled": false,
+          "$comment": "Standalone RDS PostgreSQL instance, as opposed to an Aurora cluster. Routed through the 5432 SNI frontend, so sslmode=verify-full still works."
+        },
+        "mysql": {
+          "enabled": false,
+          "$comment": "Standalone RDS instance. Set engine to mysql or mariadb. Direct local port, so connect to 127.0.0.1 rather than the RDS hostname.",
+          "engine": "mysql",
+          "port": 3306
+        },
+
         "redis": {
           "enabled": false,
-          "$comment": "ElastiCache Serverless (Redis/Valkey) via describe-serverless-caches. Direct local port, no HAProxy.",
+          "$comment": "ElastiCache Serverless (Redis/Valkey) via describe-serverless-caches. Direct local port.",
           "tls": true
-        }
+        },
+        "redis_cluster": {
+          "enabled": false,
+          "$comment": "Classic (non-serverless) ElastiCache replication group. Uses the configuration endpoint when cluster mode is enabled, the primary endpoint otherwise.",
+          "port": 6379
+        },
+        "memcached": {
+          "enabled": false,
+          "$comment": "ElastiCache memcached cluster, via its configuration endpoint.",
+          "port": 11211
+        },
+
+        "documentdb": {
+          "enabled": false,
+          "$comment": "DocumentDB cluster endpoint. Connect with directConnection=true, since replica set discovery would hand back in-VPC hostnames.",
+          "port": 27017
+        },
+        "opensearch": {
+          "enabled": false,
+          "$comment": "OpenSearch domain with a VPC endpoint. Routed through the 443 SNI frontend.",
+          "$comment_dashboards": "This also covers OpenSearch Dashboards, the Kibana-style UI. A VPC domain serves it from the same endpoint on the same port, at https://<domain-endpoint>/_dashboards, so the one tunnel gives you both the REST API and the browser UI. No separate entry needed."
+        },
+        "msk": {
+          "enabled": false,
+          "$comment": "MSK, first TLS bootstrap broker only. Enough to bootstrap a client; a producer that follows metadata to the other brokers needs each of them forwarded too."
+        },
+
+        "$comment_custom": "Anything else reachable from the bastion: a self-managed database on EC2, a peered partner endpoint, an internal service by IP. host and port are required. Set sni_443 true to route it through the HAProxy 443 frontend instead of a direct port.",
+        "custom": [
+          {
+            "enabled": false,
+            "name": "legacy-mysql",
+            "host": "mysql-01.internal.example.com",
+            "port": 3306
+          }
+        ]
       }
     },
 
@@ -82,7 +130,15 @@
         },
         "aurora": { "enabled": false, "endpoint_type": "writer" },
         "rds_proxy": { "enabled": false },
-        "redis": { "enabled": false, "tls": true }
+        "postgres": { "enabled": false },
+        "mysql": { "enabled": false, "engine": "mysql", "port": 3306 },
+        "redis": { "enabled": false, "tls": true },
+        "redis_cluster": { "enabled": false, "port": 6379 },
+        "memcached": { "enabled": false, "port": 11211 },
+        "documentdb": { "enabled": false, "port": 27017 },
+        "opensearch": { "enabled": false },
+        "msk": { "enabled": false },
+        "custom": []
       }
     }
   }

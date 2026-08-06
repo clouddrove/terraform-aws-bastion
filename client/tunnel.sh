@@ -10,15 +10,23 @@
 # profiles, skip bootstrap and just reference existing profile names.
 #
 # Each environment in the config:
-#   - declares which resources it wants (eks, internal_alb, aurora, rds_proxy, redis)
+#   - declares which resources it wants, all opt-in:
+#       eks, internal_alb, aurora, rds_proxy, postgres, mysql, redis,
+#       redis_cluster, memcached, documentdb, opensearch, msk, custom[]
 #   - is processed only if a bastion EC2 instance can be discovered for it
 #   - tolerates any individual resource being absent (skipped with a [WARN])
 #
-# Ports auto-allocate from base_port; HTTPS-bearing resources route through
-# HAProxy so the real hostname resolves locally and TLS validation still passes:
-#   * :443   -> EKS apiserver, internal ALB hostnames (SNI dispatch)
-#   * :5432  -> Aurora, RDS Proxy (SNI dispatch)
-#   * Redis  -> direct local-port tunnel (no HAProxy)
+# Ports auto-allocate from base_port; TLS-bearing resources route through
+# HAProxy so the real hostname resolves locally and certificate validation still
+# passes:
+#   * :443   -> EKS apiserver, internal ALB hostnames, OpenSearch (SNI dispatch)
+#   * :5432  -> Aurora, RDS Proxy, RDS PostgreSQL (SNI dispatch)
+#   * others -> direct local-port tunnel: MySQL, Redis, Memcached, DocumentDB,
+#               MSK, and anything listed under custom[]
+#
+# custom[] takes a host and a port directly, so a self-managed database on EC2,
+# a peered partner endpoint, or an internal service by IP goes through the same
+# bastion as everything else.
 #
 # Usage:
 #   ./tunnel.sh [--config tunnel.json] [--env dev [--env prod ...]]
@@ -49,14 +57,12 @@ done
 print_banner() {
   cat <<'EOF'
 
-   ____ _                 _ ____
-  / ___| | ___  _   _  __| |  _ \ _ __ _____   _____
- | |   | |/ _ \| | | |/ _` | | | | '__/ _ \ \ / / _ \
- | |___| | (_) | |_| | (_| | |_| | | | (_) \ V /  __/
-  \____|_|\___/ \__,_|\__,_|____/|_|  \___/ \_/ \___|
-
-  SSM Jump Host Tunnel  ::  terraform-aws-bastion
-  https://clouddrove.com
+  ____               _    _
+ | __ )   __ _  ___ | |_ (_)  ___   _ __
+ |  _ \  / _` |/ __|| __|| | / _ \ | '_ \
+ | |_) || (_| |\__ \| |_ | || (_) || | | |
+ |____/  \__,_||___/ \__||_| \___/ |_| |_|
+                             by CloudDrove
 
 EOF
 }
@@ -274,6 +280,81 @@ discover_redis_endpoint() {
     --region "$region" --profile "$profile" \
     --query "ServerlessCaches[?contains(ServerlessCacheName, '${env}')] | [0].Endpoint.Address" \
     --output text 2>/dev/null
+}
+
+# Classic (non-serverless) ElastiCache. Cluster mode enabled exposes a
+# configuration endpoint; disabled exposes a primary endpoint. Try both.
+discover_redis_group_endpoint() {
+  local env="$1" region="$2" profile="$3"
+  local ep
+  ep=$(aws elasticache describe-replication-groups \
+    --region "$region" --profile "$profile" \
+    --query "ReplicationGroups[?contains(ReplicationGroupId, '${env}')] | [0].ConfigurationEndpoint.Address" \
+    --output text 2>/dev/null)
+  if [[ -z "$ep" || "$ep" == "None" ]]; then
+    ep=$(aws elasticache describe-replication-groups \
+      --region "$region" --profile "$profile" \
+      --query "ReplicationGroups[?contains(ReplicationGroupId, '${env}')] | [0].NodeGroups[0].PrimaryEndpoint.Address" \
+      --output text 2>/dev/null)
+  fi
+  echo "$ep"
+}
+
+discover_memcached_endpoint() {
+  local env="$1" region="$2" profile="$3"
+  aws elasticache describe-cache-clusters \
+    --region "$region" --profile "$profile" \
+    --query "CacheClusters[?Engine=='memcached' && contains(CacheClusterId, '${env}')] | [0].ConfigurationEndpoint.Address" \
+    --output text 2>/dev/null
+}
+
+# Standalone RDS instances, as opposed to Aurora clusters. engine_filter is a
+# substring of the RDS engine name: mysql, postgres, mariadb, oracle, sqlserver.
+discover_rds_instance_endpoint() {
+  local env="$1" region="$2" profile="$3" engine_filter="$4"
+  aws rds describe-db-instances \
+    --region "$region" --profile "$profile" \
+    --query "DBInstances[?contains(Engine, '${engine_filter}') && contains(DBInstanceIdentifier, '${env}')] | [0].Endpoint.Address" \
+    --output text 2>/dev/null
+}
+
+discover_docdb_endpoint() {
+  local env="$1" region="$2" profile="$3"
+  aws docdb describe-db-clusters \
+    --region "$region" --profile "$profile" \
+    --query "DBClusters[?contains(DBClusterIdentifier, '${env}')] | [0].Endpoint" \
+    --output text 2>/dev/null
+}
+
+discover_opensearch_endpoint() {
+  local env="$1" region="$2" profile="$3"
+  local domain
+  domain=$(aws opensearch list-domain-names \
+    --region "$region" --profile "$profile" \
+    --query "DomainNames[?contains(DomainName, '${env}')] | [0].DomainName" \
+    --output text 2>/dev/null)
+  [[ -z "$domain" || "$domain" == "None" ]] && return 0
+  aws opensearch describe-domain \
+    --region "$region" --profile "$profile" --domain-name "$domain" \
+    --query "DomainStatus.Endpoints.vpc || DomainStatus.Endpoint" \
+    --output text 2>/dev/null
+}
+
+# MSK returns a comma-separated bootstrap string. Only the first broker is
+# tunnelled: enough to bootstrap a client, though a producer that then follows
+# metadata to the other brokers needs each of them forwarded too.
+discover_msk_broker() {
+  local env="$1" region="$2" profile="$3"
+  local arn
+  arn=$(aws kafka list-clusters-v2 \
+    --region "$region" --profile "$profile" \
+    --query "ClusterInfoList[?contains(ClusterName, '${env}')] | [0].ClusterArn" \
+    --output text 2>/dev/null)
+  [[ -z "$arn" || "$arn" == "None" ]] && return 0
+  aws kafka get-bootstrap-brokers \
+    --region "$region" --profile "$profile" --cluster-arn "$arn" \
+    --query "BootstrapBrokerStringTls || BootstrapBrokerString" \
+    --output text 2>/dev/null | cut -d, -f1
 }
 
 #############################################################################
@@ -496,6 +577,142 @@ for ENV in "${ENVS_TO_PROCESS[@]}"; do
     fi
   fi
 
+  # ---- Classic ElastiCache Redis / Valkey replication group ----
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.redis_cluster.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    RG_PORT=$(jq -r --arg e "$ENV" '.environments[$e].resources.redis_cluster.port // 6379' "$CONFIG_FILE")
+    RG_HOST=$(discover_redis_group_endpoint "$ENV" "$REGION" "$PROFILE")
+    if [[ -n "$RG_HOST" && "$RG_HOST" != "None" ]]; then
+      PORT=$(allocate_port)
+      start_tunnel "$ENV" "$REGION" "$PROFILE" "$RG_HOST" "$PORT" "$RG_PORT" "Redis (cluster)" "$INSTANCE_ID" || true
+      HOSTS_TO_ADD+=("$RG_HOST")
+    else
+      printf "| %-19s | %-18s | %s\n" "Redis (cluster)" "(missing)" "[WARN] no ElastiCache replication group found"
+    fi
+  fi
+
+  # ---- Memcached ----
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.memcached.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    MC_PORT=$(jq -r --arg e "$ENV" '.environments[$e].resources.memcached.port // 11211' "$CONFIG_FILE")
+    MC_HOST=$(discover_memcached_endpoint "$ENV" "$REGION" "$PROFILE")
+    if [[ -n "$MC_HOST" && "$MC_HOST" != "None" ]]; then
+      PORT=$(allocate_port)
+      start_tunnel "$ENV" "$REGION" "$PROFILE" "$MC_HOST" "$PORT" "$MC_PORT" "Memcached" "$INSTANCE_ID" || true
+      HOSTS_TO_ADD+=("$MC_HOST")
+    else
+      printf "| %-19s | %-18s | %s\n" "Memcached" "(missing)" "[WARN] no memcached cluster found"
+    fi
+  fi
+
+  # ---- MySQL / MariaDB, standalone RDS instance ----
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.mysql.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    MY_ENGINE=$(jq -r --arg e "$ENV" '.environments[$e].resources.mysql.engine // "mysql"' "$CONFIG_FILE")
+    MY_PORT=$(jq -r --arg e "$ENV" '.environments[$e].resources.mysql.port // 3306' "$CONFIG_FILE")
+    MY_HOST=$(discover_rds_instance_endpoint "$ENV" "$REGION" "$PROFILE" "$MY_ENGINE")
+    if [[ -n "$MY_HOST" && "$MY_HOST" != "None" ]]; then
+      PORT=$(allocate_port)
+      start_tunnel "$ENV" "$REGION" "$PROFILE" "$MY_HOST" "$PORT" "$MY_PORT" "MySQL/MariaDB" "$INSTANCE_ID" || true
+      HOSTS_TO_ADD+=("$MY_HOST")
+    else
+      printf "| %-19s | %-18s | %s\n" "MySQL/MariaDB" "(missing)" "[WARN] no RDS ${MY_ENGINE} instance found"
+    fi
+  fi
+
+  # ---- PostgreSQL, standalone RDS instance ----
+  #
+  # Routed through the 5432 HAProxy frontend like Aurora, so the real hostname
+  # resolves locally and sslmode=verify-full still passes.
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.postgres.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    PG_HOST=$(discover_rds_instance_endpoint "$ENV" "$REGION" "$PROFILE" "postgres")
+    if [[ -n "$PG_HOST" && "$PG_HOST" != "None" ]]; then
+      PORT=$(allocate_port)
+      if start_tunnel "$ENV" "$REGION" "$PROFILE" "$PG_HOST" "$PORT" "5432" "PostgreSQL (RDS)" "$INSTANCE_ID"; then
+        FRONTEND_5432+=("backend_${PORT} if { req.ssl_sni -i ${PG_HOST} }")
+        append_backend_block "$PORT"
+        HOSTS_TO_ADD+=("$PG_HOST")
+      fi
+    else
+      printf "| %-19s | %-18s | %s\n" "PostgreSQL (RDS)" "(missing)" "[WARN] no RDS postgres instance found"
+    fi
+  fi
+
+  # ---- DocumentDB ----
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.documentdb.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    DOC_PORT=$(jq -r --arg e "$ENV" '.environments[$e].resources.documentdb.port // 27017' "$CONFIG_FILE")
+    DOC_HOST=$(discover_docdb_endpoint "$ENV" "$REGION" "$PROFILE")
+    if [[ -n "$DOC_HOST" && "$DOC_HOST" != "None" ]]; then
+      PORT=$(allocate_port)
+      start_tunnel "$ENV" "$REGION" "$PROFILE" "$DOC_HOST" "$PORT" "$DOC_PORT" "DocumentDB" "$INSTANCE_ID" || true
+      HOSTS_TO_ADD+=("$DOC_HOST")
+    else
+      printf "| %-19s | %-18s | %s\n" "DocumentDB" "(missing)" "[WARN] no DocumentDB cluster found"
+    fi
+  fi
+
+  # ---- OpenSearch, VPC endpoint on 443 through the SNI frontend ----
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.opensearch.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    OS_HOST=$(discover_opensearch_endpoint "$ENV" "$REGION" "$PROFILE")
+    if [[ -n "$OS_HOST" && "$OS_HOST" != "None" ]]; then
+      PORT=$(allocate_port)
+      if start_tunnel "$ENV" "$REGION" "$PROFILE" "$OS_HOST" "$PORT" "443" "OpenSearch" "$INSTANCE_ID"; then
+        FRONTEND_443+=("backend_${PORT} if { req.ssl_sni -i ${OS_HOST} }")
+        append_backend_block "$PORT"
+        HOSTS_TO_ADD+=("$OS_HOST")
+      fi
+    else
+      printf "| %-19s | %-18s | %s\n" "OpenSearch" "(missing)" "[WARN] no OpenSearch domain found"
+    fi
+  fi
+
+  # ---- MSK, first bootstrap broker only ----
+  if [[ "$(jq -r --arg e "$ENV" '.environments[$e].resources.msk.enabled // false' "$CONFIG_FILE")" == "true" ]]; then
+    MSK_BROKER=$(discover_msk_broker "$ENV" "$REGION" "$PROFILE")
+    if [[ -n "$MSK_BROKER" && "$MSK_BROKER" != "None" ]]; then
+      MSK_HOST=${MSK_BROKER%%:*}
+      MSK_PORT=${MSK_BROKER##*:}
+      [[ "$MSK_PORT" == "$MSK_HOST" ]] && MSK_PORT=9094
+      PORT=$(allocate_port)
+      start_tunnel "$ENV" "$REGION" "$PROFILE" "$MSK_HOST" "$PORT" "$MSK_PORT" "MSK (broker 1)" "$INSTANCE_ID" || true
+      HOSTS_TO_ADD+=("$MSK_HOST")
+    else
+      printf "| %-19s | %-18s | %s\n" "MSK" "(missing)" "[WARN] no MSK cluster found"
+    fi
+  fi
+
+  # ---- Custom hosts ----
+  #
+  # Anything with a reachable address and a port: a self-managed database on
+  # EC2, a partner endpoint over VPC peering, an internal service by IP. This is
+  # what keeps the bastion a single entry point rather than one tool per
+  # service.
+  CUSTOM_COUNT=$(jq -r --arg e "$ENV" '.environments[$e].resources.custom // [] | length' "$CONFIG_FILE")
+  if [[ "$CUSTOM_COUNT" -gt 0 ]]; then
+    for i in $(seq 0 $((CUSTOM_COUNT - 1))); do
+      C_ENABLED=$(jq -r --arg e "$ENV" --argjson i "$i" '.environments[$e].resources.custom[$i].enabled // true' "$CONFIG_FILE")
+      [[ "$C_ENABLED" != "true" ]] && continue
+      C_NAME=$(jq -r --arg e "$ENV" --argjson i "$i" '.environments[$e].resources.custom[$i].name // "custom"' "$CONFIG_FILE")
+      C_HOST=$(jq -r --arg e "$ENV" --argjson i "$i" '.environments[$e].resources.custom[$i].host // ""' "$CONFIG_FILE")
+      C_PORT=$(jq -r --arg e "$ENV" --argjson i "$i" '.environments[$e].resources.custom[$i].port // 0' "$CONFIG_FILE")
+      C_SNI=$(jq -r --arg e "$ENV" --argjson i "$i" '.environments[$e].resources.custom[$i].sni_443 // false' "$CONFIG_FILE")
+
+      if [[ -z "$C_HOST" || "$C_PORT" == "0" ]]; then
+        printf "| %-19s | %-18s | %s\n" "$C_NAME" "(missing)" "[WARN] custom entry needs both host and port"
+        continue
+      fi
+
+      PORT=$(allocate_port)
+      if [[ "$C_SNI" == "true" ]]; then
+        if start_tunnel "$ENV" "$REGION" "$PROFILE" "$C_HOST" "$PORT" "$C_PORT" "$C_NAME" "$INSTANCE_ID"; then
+          FRONTEND_443+=("backend_${PORT} if { req.ssl_sni -i ${C_HOST} }")
+          append_backend_block "$PORT"
+          HOSTS_TO_ADD+=("$C_HOST")
+        fi
+      else
+        start_tunnel "$ENV" "$REGION" "$PROFILE" "$C_HOST" "$PORT" "$C_PORT" "$C_NAME" "$INSTANCE_ID" || true
+        HOSTS_TO_ADD+=("$C_HOST")
+      fi
+    done
+  fi
+
 done
 
 echo "================================================================================================================================"
@@ -532,9 +749,16 @@ echo "==========================================================================
 echo "Examples:"
 echo "  kubectl --kubeconfig ~/.kube/config-tunnel --context <env> get nodes"
 echo "  psql 'host=<aurora-host> port=5432 sslmode=require dbname=<db> user=<user>'"
+echo "  mysql -h 127.0.0.1 -P <local-port> -u <user> -p --ssl-mode=REQUIRED"
 echo "  redis-cli -h localhost -p <local-port> --tls"
+echo "  memcached: telnet localhost <local-port>   (or your client of choice)"
+echo "  mongosh 'mongodb://<user>@localhost:<local-port>/?tls=true&directConnection=true'"
+echo "  curl https://<opensearch-host>/_cluster/health"
+echo "  open https://<opensearch-host>/_dashboards        (OpenSearch Dashboards UI)"
+echo "  kafka-topics.sh --bootstrap-server localhost:<local-port> --list"
 echo "================================================================================================================================"
 echo "Built with ❤️  by CloudDrove  ::  https://clouddrove.com  ::  hello@clouddrove.com"
+echo "terraform-aws-bastion  ::  https://github.com/clouddrove/terraform-aws-bastion"
 echo ""
 
 while true; do sleep 1; done
