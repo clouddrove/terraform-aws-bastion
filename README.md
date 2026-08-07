@@ -48,7 +48,7 @@
 <hr>
 
 
-We are a group of DevOps engineers & architects, joining hands in this ever evolving digital landscape. With our strong belief in Automation; just like microservices, always on the lookout to split the the infrastructure into smaller connected resources (database, cluster and more) which could be standardized, are manageable, scalable, secure & follow industry best practices.
+We are a group of DevOps engineers & architects, joining hands in this ever evolving digital landscape. With our strong belief in Automation; just like microservices, always on the lookout to split the the infrastructure into smaller connected resources (database, cluster and more) which could be standardized, are manageable, scalable, secure & follow industry best practices. 
 
 
 This module includes Terraform open source, examples, and automation tests (for better understanding), which would help you create and improve your infrastructure with minimalistic coding.
@@ -67,7 +67,6 @@ This table contains both Prerequisites and Providers:
 
 
 
-![Architecture](docs/architecture.svg)
 
 
 ## Examples
@@ -76,28 +75,24 @@ This table contains both Prerequisites and Providers:
 
 📌 For additional usage examples, check the complete list under [`examples/`](./examples) directory.
 
-| Example | What it shows |
-|---|---|
-| [`basic`](./examples/basic) | An existing VPC and private subnets, defaults otherwise |
-| [`complete`](./examples/complete) | Builds its own VPC, private subnets, and SSM interface endpoints |
-| [`with-targets`](./examples/with-targets) | Opens EKS, Aurora, RDS, Redis, memcached, DocumentDB, OpenSearch, and MSK to the bastion |
-| [`session-transcripts`](./examples/session-transcripts) | Full terminal transcripts of interactive shells |
-| [`minimal`](./examples/minimal) | The bastion alone, no logging and no dashboard |
-
-
-## Documentation
-
-| Page | Covers |
-|---|---|
-| [Consuming this module](docs/consuming.md) | Registry source, version pinning, and tracking an unreleased commit |
-| [Session logging and audit](docs/session-logging.md) | The two log groups, the CloudTrail prerequisite, the dashboard, and availability |
-| [Client: tunnels, cost, troubleshooting](docs/client.md) | `bootstrap.sh`, `tunnel.sh`, every service they reach, what it costs, and common failures |
-| [Composition trade-offs](docs/composition-tradeoffs.md) | What composing published modules costs, and how to cover it |
 
 
 ## Inputs and Outputs
 
 Refer to complete documentation: [here](docs/io.md)
+
+
+<!-- 
+## Module Dependencies
+
+This module has dependencies on:
+
+- [Labels Module](https://github.com/clouddrove/terraform-aws-labels): Provides resource tagging.
+- [Security Groups Module](https://github.com/clouddrove/terraform-aws-security-group): Manage security groups
+- [KMS Module](https://github.com/clouddrove/terraform-aws-kms): Manage resource encryption
+
+
+ -->
 
 
 ## Module Dependencies
@@ -120,24 +115,51 @@ Refer [here](CHANGELOG.md).
 
 ## ✨ Contributors
 
-Big thanks to our contributors for elevating our project with their dedication and expertise! But, we do not wish to stop there, would like to invite contributions from the community in improving these projects and making them more versatile for better reach. Remember, every bit of contribution is immensely valuable, as, together, we are moving in only 1 direction, i.e. forward.
+Big thanks to our contributors for elevating our project with their dedication and expertise! But, we do not wish to stop there, would like to invite contributions from the community in improving these projects and making them more versatile for better reach. Remember, every bit of contribution is immensely valuable, as, together, we are moving in only 1 direction, i.e. forward. 
 
 <a href="https://github.com/clouddrove/terraform-aws-bastion/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=clouddrove/terraform-aws-bastion&max=24" />
+  <img src="https://contrib.rocks/image?repo=clouddrove/terraform-aws-bastion&max" />
 </a>
 <br>
 <br>
 
-## Feedback
+ If you're considering contributing to our project, here are a few quick guidelines that we have been following (Got a suggestion? We are all ears!):
 
-Spot a bug or have thoughts to share with us? Let's squash it together! Log it in our [issue tracker][github_issues], feel free to drop us an email at [hello@clouddrove.com](mailto:hello@clouddrove.com).
+- **Fork the Repository:** Create a new branch for your feature or bug fix.
+- **Coding Standards:** You know the drill.
+- **Clear Commit Messages:** Write clear and concise commit messages to facilitate understanding.
+- **Thorough Testing:** Test your changes thoroughly before submitting a pull request.
+- **Documentation Updates:** Include relevant documentation updates if your changes impact it.
 
-Show some love with a ★ on [our GitHub][github]!  if our work has brightened your day! – your feedback fuels our journey!
+
+
+
+
+
+
+
+
+
+
+
+
+## Feedback 
+Spot a bug or have thoughts to share with us? Let's squash it together! Log it in our [issue tracker](https://github.com/clouddrove/terraform-aws-bastion/issues), feel free to drop us an email at [hello@clouddrove.com](mailto:hello@clouddrove.com).
+
+Show some love with a ★ on [our GitHub](https://github.com/clouddrove/terraform-aws-bastion)!  if our work has brightened your day! – your feedback fuels our journey!
 
 
 ## :rocket: Our Accomplishment
 
-We have [*100+ Terraform modules*][terraform_modules] 🙌. You could consider them finished, but, with enhancements, bug fixes, and more features, they are alive and evolving! Please feel free to give us your valuable feedback.
+We have [*100+ Terraform modules*][terraform_modules] 🙌. You could consider them finished, but, with enthusiasts like yourself, we are able to ever improve them, so we call our status - improvement in progress.
+
+- [Terraform Module Registry:](https://registry.terraform.io/namespaces/clouddrove) Discover our Terraform modules here.
+
+- [Terraform Modules for AWS/Azure Modules:](https://github.com/clouddrove/toc) Explore our comprehensive Table of Contents for easy navigation through our documentation for modules pertaining to AWS, Azure & GCP. 
+
+- [Terraform Modules for Digital Ocean:](https://github.com/terraform-do-modules/toc) Check out our specialized Terraform modules for Digital Ocean.
+
+
 
 
 ## Join Our Slack Community
@@ -159,7 +181,7 @@ Join our tech elites [Join Now][slack] 🚀
  Click [here][blog] :books: :star2:
 
 ## Tap into our capabilities
-We provide a platform for organizations to engage with experienced top-tier DevOps & Cloud services. Tap into our pool of certified engineers and architects to elevate your DevOps and Cloud Solutions.
+We provide a platform for organizations to engage with experienced top-tier DevOps & Cloud services. Tap into our pool of certified engineers and architects to elevate your DevOps and Cloud Solutions. 
 
 At [CloudDrove][website], has extensive experience in designing, building & migrating environments, securing, consulting, monitoring, optimizing, automating, and maintaining complex and large modern systems. With remarkable client footprints in American & European corridors, our certified architects & engineers are ready to serve you as per your requirements & schedule. Write to us at [business@clouddrove.com](mailto:business@clouddrove.com).
 
@@ -171,7 +193,6 @@ At [CloudDrove][website], has extensive experience in designing, building & migr
   [blog]: https://blog.clouddrove.com
   [slack]: https://www.launchpass.com/devops-talks
   [github]: https://github.com/clouddrove
-  [github_issues]: https://github.com/clouddrove/terraform-aws-bastion/issues
   [linkedin]: https://cpco.io/linkedin
   [twitter]: https://twitter.com/clouddrove/
   [email]: https://clouddrove.com/contact-us.html
