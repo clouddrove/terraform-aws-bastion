@@ -460,7 +460,7 @@ resource "aws_ssm_document" "session_preferences" {
 ##############################################################################
 module "session_events" {
   source  = "clouddrove/cloudwatch-event-rule/aws"
-  version = "1.0.2"
+  version = "1.0.3"
 
   enabled     = local.audit_logging_enabled
   name        = var.name
